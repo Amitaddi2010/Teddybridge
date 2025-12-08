@@ -130,9 +130,39 @@ export async function registerRoutes(
   }
 
   // Initialize Twilio
-  const twilioClient = process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN
-    ? twilio(process.env.TWILIO_ACCOUNT_SID, process.env.TWILIO_AUTH_TOKEN)
-    : null;
+  let twilioClient = null;
+  const accountSid = process.env.TWILIO_ACCOUNT_SID;
+  const authToken = process.env.TWILIO_AUTH_TOKEN;
+  
+  // Only initialize if credentials are valid (not placeholders)
+  if (accountSid && authToken && 
+      accountSid.startsWith('AC') && 
+      accountSid !== 'your-twilio-account-sid' &&
+      authToken !== 'your-twilio-auth-token') {
+    try {
+      twilioClient = twilio(accountSid, authToken);
+      console.log("✓ Twilio client initialized successfully");
+      console.log(`  TWILIO_PHONE_NUMBER: ${process.env.TWILIO_PHONE_NUMBER || "NOT SET"}`);
+    } catch (error: any) {
+      console.log("✗ Failed to initialize Twilio client:");
+      console.log(`  Error: ${error.message}`);
+      twilioClient = null;
+    }
+  } else {
+    console.log("✗ Twilio client NOT initialized:");
+    if (!accountSid || accountSid === 'your-twilio-account-sid') {
+      console.log(`  TWILIO_ACCOUNT_SID: NOT SET or using placeholder`);
+    } else if (!accountSid.startsWith('AC')) {
+      console.log(`  TWILIO_ACCOUNT_SID: Invalid format (must start with 'AC')`);
+    } else {
+      console.log(`  TWILIO_ACCOUNT_SID: SET`);
+    }
+    if (!authToken || authToken === 'your-twilio-auth-token') {
+      console.log(`  TWILIO_AUTH_TOKEN: NOT SET or using placeholder`);
+    } else {
+      console.log(`  TWILIO_AUTH_TOKEN: SET`);
+    }
+  }
 
   // =====================
   // AUTH ROUTES
@@ -237,6 +267,7 @@ export async function registerRoutes(
 
     passport.authenticate("local", (err: Error, user: User, info: { message: string }) => {
       if (err) {
+        console.error("Login error in passport.authenticate:", err);
         return res.status(500).json({ message: "Internal server error" });
       }
       if (!user) {
@@ -244,6 +275,7 @@ export async function registerRoutes(
       }
       req.logIn(user, (err) => {
         if (err) {
+          console.error("Login error in req.logIn:", err);
           return res.status(500).json({ message: "Internal server error" });
         }
         storage.createAuditLog({
@@ -251,6 +283,9 @@ export async function registerRoutes(
           action: "USER_LOGIN",
           resourceType: "user",
           resourceId: user.id,
+        }).catch((auditError) => {
+          console.error("Error creating audit log:", auditError);
+          // Don't fail login if audit log fails
         });
         return res.json({ message: "Logged in successfully" });
       });
@@ -282,6 +317,63 @@ export async function registerRoutes(
     res.json({ user });
   });
 
+  app.put("/api/user/profile", async (req, res) => {
+    if (!req.isAuthenticated()) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    try {
+      const { name, phoneNumber, demographics, specialty, city } = req.body;
+      
+      // Update user name if provided
+      if (name !== undefined && name !== null) {
+        await storage.updateUser(req.user!.id, { name: name.trim() });
+      }
+
+      // Update profile based on role
+      if (req.user!.role === "PATIENT") {
+        const profileUpdates: any = {};
+        if (phoneNumber !== undefined) {
+          profileUpdates.phoneNumber = phoneNumber === null || phoneNumber === "" ? null : phoneNumber;
+        }
+        if (demographics !== undefined) {
+          // Handle demographics - if it's an object with all null values, set to null
+          if (demographics && typeof demographics === 'object') {
+            const hasValues = (demographics.age !== null && demographics.age !== undefined) ||
+                            (demographics.gender !== null && demographics.gender !== undefined) ||
+                            (demographics.procedure !== null && demographics.procedure !== undefined);
+            profileUpdates.demographics = hasValues ? demographics : null;
+          } else {
+            profileUpdates.demographics = demographics;
+          }
+        }
+        if (Object.keys(profileUpdates).length > 0) {
+          await storage.updatePatientProfile(req.user!.id, profileUpdates);
+        }
+      } else if (req.user!.role === "DOCTOR") {
+        const profileUpdates: any = {};
+        if (phoneNumber !== undefined) {
+          profileUpdates.phoneNumber = phoneNumber || "";
+        }
+        if (specialty !== undefined) {
+          profileUpdates.specialty = specialty === null || specialty === "" ? null : specialty;
+        }
+        if (city !== undefined) {
+          profileUpdates.city = city === null || city === "" ? null : city;
+        }
+        if (Object.keys(profileUpdates).length > 0) {
+          await storage.updateDoctorProfile(req.user!.id, profileUpdates);
+        }
+      }
+
+      // Return updated user
+      const updatedUser = await storage.getUserWithProfile(req.user!.id);
+      res.json({ user: updatedUser });
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
   // =====================
   // PATIENT ROUTES
   // =====================
@@ -302,6 +394,44 @@ export async function registerRoutes(
       res.json(connections);
     } catch (error) {
       console.error("Error fetching connections:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/patient/surveys", requireRole("PATIENT"), async (req, res) => {
+    try {
+      const surveys = await storage.getSurveysForPatient(req.user!.id);
+      res.json(surveys);
+    } catch (error) {
+      console.error("Error fetching surveys:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/patient/linked-doctors", requireRole("PATIENT"), async (req, res) => {
+    try {
+      const records = await storage.getLinkRecordsForPatient(req.user!.id);
+      
+      // Fetch doctor information for each link record
+      const linkedDoctors = [];
+      for (const record of records) {
+        const doctor = await storage.getUserWithProfile(record.doctorId);
+        if (doctor && doctor.doctorProfile) {
+          linkedDoctors.push({
+            ...record,
+            doctor: {
+              id: doctor.id,
+              name: doctor.name,
+              email: doctor.email,
+              doctorProfile: doctor.doctorProfile,
+            },
+          });
+        }
+      }
+      
+      res.json(linkedDoctors);
+    } catch (error) {
+      console.error("Error fetching linked doctors:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -496,6 +626,17 @@ export async function registerRoutes(
         return res.status(400).json({ message: "Target patient is required" });
       }
 
+      // Check if patients are connected
+      const connections = await storage.getConnectionsForPatient(req.user!.id);
+      const isConnected = connections.some(
+        conn => (conn.requesterPatientId === req.user!.id && conn.targetPatientId === targetPatientId && conn.status === "CONFIRMED") ||
+                (conn.requesterPatientId === targetPatientId && conn.targetPatientId === req.user!.id && conn.status === "CONFIRMED")
+      );
+
+      if (!isConnected) {
+        return res.status(400).json({ message: "You must be connected to this patient before calling" });
+      }
+
       const patientProfile = await storage.getPatientProfile(req.user!.id);
       const targetProfile = await storage.getPatientProfile(targetPatientId);
 
@@ -510,29 +651,101 @@ export async function registerRoutes(
         targetPatientId,
         twilioConferenceName: conferenceName,
         mode: mode || "voice",
-        isLive: true,
+        isLive: false, // Will be set to true when calls connect
         startedAt: new Date(),
       });
 
       // Initiate Twilio conference call
-      if (twilioClient && process.env.TWILIO_PHONE_NUMBER) {
-        try {
-          // Call requester
-          await twilioClient.calls.create({
-            to: patientProfile.phoneNumber,
-            from: process.env.TWILIO_PHONE_NUMBER,
-            twiml: `<Response><Dial><Conference>${conferenceName}</Conference></Dial></Response>`,
-          });
+      if (!twilioClient) {
+        console.log("Twilio client not initialized. Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN");
+        return res.status(400).json({ 
+          ...call, 
+          mock: true,
+          message: "Twilio not configured. Please set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN environment variables." 
+        });
+      }
 
-          // Call target
-          await twilioClient.calls.create({
-            to: targetProfile.phoneNumber,
-            from: process.env.TWILIO_PHONE_NUMBER,
-            twiml: `<Response><Dial><Conference>${conferenceName}</Conference></Dial></Response>`,
-          });
-        } catch (twilioError) {
-          console.error("Twilio call failed:", twilioError);
+      if (!process.env.TWILIO_PHONE_NUMBER) {
+        console.log("TWILIO_PHONE_NUMBER not set");
+        return res.status(400).json({ 
+          ...call, 
+          mock: true,
+          message: "Twilio phone number not configured. Please set TWILIO_PHONE_NUMBER environment variable." 
+        });
+      }
+
+      try {
+        let baseUrl = process.env.APP_URL || `http://localhost:${process.env.PORT || 5000}`;
+        
+        // Check if URL is localhost - use inline TwiML for local development
+        const isLocalhost = baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1');
+        
+        if (isLocalhost) {
+          console.warn("⚠️  WARNING: Using localhost. For production, use a publicly accessible URL.");
+          console.warn("   For local development with Twilio, use ngrok:");
+          console.warn("   1. Run in separate terminal: ngrok http 5000");
+          console.warn("   2. Set APP_URL in .env to the ngrok HTTPS URL");
+          console.warn("   Using inline TwiML as fallback (may not work for all Twilio features)...");
         }
+
+        console.log(`Initiating Twilio calls: Requester ${patientProfile.phoneNumber}, Target ${targetProfile.phoneNumber}`);
+        
+        // Use inline TwiML for localhost, URL for public URLs
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Dial><Conference>${conferenceName}</Conference></Dial></Response>`;
+        
+        let callOptions: any = {
+          to: patientProfile.phoneNumber,
+          from: process.env.TWILIO_PHONE_NUMBER,
+        };
+        
+        if (isLocalhost) {
+          // Use inline TwiML for localhost
+          callOptions.twiml = twiml;
+          console.log(`Using inline TwiML (localhost mode)`);
+        } else {
+          // Use URL for public servers
+          const twimlUrl = `${baseUrl}/api/twilio/twiml/conference?conference=${encodeURIComponent(conferenceName)}`;
+          callOptions.url = twimlUrl;
+          callOptions.statusCallback = `${baseUrl}/api/twilio/webhook/status`;
+          callOptions.statusCallbackEvent = ['initiated', 'ringing', 'answered', 'completed'];
+          console.log(`TwiML URL: ${twimlUrl}`);
+        }
+
+        // Call requester
+        const requesterCall = await twilioClient.calls.create(callOptions);
+
+        console.log(`Requester call SID: ${requesterCall.sid}`);
+
+        // Call target (same options, different number)
+        const targetCallOptions = { ...callOptions, to: targetProfile.phoneNumber };
+        const targetCall = await twilioClient.calls.create(targetCallOptions);
+
+        console.log(`Target call SID: ${targetCall.sid}`);
+
+        // Store call SIDs
+        await storage.updatePatientCall(call.id, {
+          twilioCallSids: [requesterCall.sid, targetCall.sid],
+        });
+
+        // Update call to live when both participants join
+        setTimeout(async () => {
+          await storage.updatePatientCall(call.id, { isLive: true });
+        }, 5000);
+      } catch (twilioError: any) {
+        console.error("Twilio call failed:", twilioError);
+        console.error("Error details:", {
+          message: twilioError.message,
+          code: twilioError.code,
+          status: twilioError.status,
+          moreInfo: twilioError.moreInfo,
+        });
+        // Update call status
+        await storage.updatePatientCall(call.id, { isLive: false, endedAt: new Date() });
+        return res.status(500).json({ 
+          message: "Failed to initiate call", 
+          error: twilioError.message || "Twilio service error",
+          code: twilioError.code,
+        });
       }
 
       await storage.createAuditLog({
@@ -577,7 +790,27 @@ export async function registerRoutes(
   app.get("/api/doctor/linked-patients", requireRole("DOCTOR"), async (req, res) => {
     try {
       const records = await storage.getLinkRecordsForDoctor(req.user!.id);
-      res.json(records);
+      // Filter out placeholder records (where patientId === doctorId, created when QR code is generated)
+      const actualLinks = records.filter(record => record.patientId !== record.doctorId);
+      
+      // Fetch patient information for each link record
+      const linkedPatientsWithDetails = [];
+      for (const record of actualLinks) {
+        const patient = await storage.getUserWithProfile(record.patientId);
+        if (patient) {
+          linkedPatientsWithDetails.push({
+            ...record,
+            patient: {
+              id: patient.id,
+              name: patient.name,
+              email: patient.email,
+              patientProfile: patient.patientProfile,
+            },
+          });
+        }
+      }
+      
+      res.json(linkedPatientsWithDetails);
     } catch (error) {
       console.error("Error fetching linked patients:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -734,6 +967,9 @@ export async function registerRoutes(
         return res.status(404).json({ message: "Patient not found" });
       }
 
+      // Use the actual REDCap survey link
+      const redcapSurveyLink = process.env.REDCAP_SURVEY_LINK || "https://redcap.link/CarebridgeAI";
+      
       // Create survey request
       const surveyRequest = await storage.createSurveyRequest({
         patientId,
@@ -741,7 +977,7 @@ export async function registerRoutes(
         formName: formName || `${when}_survey`,
         when,
         status: "SENT",
-        surveyLink: `https://redcap.example.com/survey?token=${generateToken()}`,
+        surveyLink: redcapSurveyLink,
       });
 
       // Send email with survey link
@@ -752,10 +988,21 @@ export async function registerRoutes(
             from: process.env.SENDGRID_FROM_EMAIL,
             subject: `PROMS Survey from ${req.user!.name} - TeddyBridge`,
             html: `
-              <h2>Please Complete Your ${when === 'preop' ? 'Pre-Operative' : 'Post-Operative'} Survey</h2>
-              <p>Dr. ${req.user!.name} has requested that you complete a health outcomes survey.</p>
-              <p><a href="${surveyRequest.surveyLink}">Click here to complete the survey</a></p>
-              <p>This helps your care team track your progress and provide better care.</p>
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <h2 style="color: #2563eb;">Please Complete Your ${when === 'preop' ? 'Pre-Operative' : 'Post-Operative'} Survey</h2>
+                <p>Dr. ${req.user!.name} has requested that you complete a health outcomes survey.</p>
+                <p>This survey helps your care team track your progress and provide better care.</p>
+                <div style="margin: 30px 0; text-align: center;">
+                  <a href="${redcapSurveyLink}" 
+                     style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+                    Complete Survey
+                  </a>
+                </div>
+                <p style="color: #666; font-size: 14px;">Or copy and paste this link into your browser:</p>
+                <p style="color: #2563eb; word-break: break-all; font-size: 12px;">${redcapSurveyLink}</p>
+                <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+                <p style="color: #666; font-size: 12px;">This is an automated message from TeddyBridge. Please do not reply to this email.</p>
+              </div>
             `,
           });
         } catch (emailError) {
@@ -768,7 +1015,7 @@ export async function registerRoutes(
         action: "SURVEY_SENT",
         resourceType: "survey_request",
         resourceId: surveyRequest.id,
-        metadata: { patientId, when },
+        metadata: { patientId, when, surveyLink: redcapSurveyLink },
       });
 
       res.json(surveyRequest);
@@ -784,12 +1031,47 @@ export async function registerRoutes(
       if (!survey) {
         return res.status(404).json({ message: "Survey not found" });
       }
+      
+      // Optionally check REDCap API for completion status
+      // This can be implemented later if needed
       res.json(survey);
     } catch (error) {
       console.error("Error fetching survey:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
+
+  // Helper function to interact with REDCap API (for future use)
+  async function checkRedcapSurveyStatus(recordId?: string) {
+    if (!process.env.REDCAP_API_KEY || !process.env.REDCAP_API_URL) {
+      return null;
+    }
+
+    try {
+      const response = await fetch(process.env.REDCAP_API_URL, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+        body: new URLSearchParams({
+          token: process.env.REDCAP_API_KEY,
+          content: 'record',
+          format: 'json',
+          type: 'flat',
+          ...(recordId && { records: recordId }),
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('REDCap API request failed');
+      }
+
+      return await response.json();
+    } catch (error) {
+      console.error('Error checking REDCap status:', error);
+      return null;
+    }
+  }
 
   // =====================
   // TWILIO ROUTES
@@ -817,30 +1099,91 @@ export async function registerRoutes(
       });
 
       // Initiate Twilio call
-      if (twilioClient && process.env.TWILIO_PHONE_NUMBER) {
-        try {
-          const conferenceName = `doctor-call-${call.id}`;
-          
-          // Call caller
-          await twilioClient.calls.create({
-            to: callerProfile.phoneNumber,
-            from: process.env.TWILIO_PHONE_NUMBER,
-            twiml: `<Response><Dial><Conference>${conferenceName}</Conference></Dial></Response>`,
-          });
+      if (!twilioClient) {
+        console.log("Twilio client not initialized. Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN");
+        return res.status(400).json({ 
+          ...call, 
+          mock: true,
+          message: "Twilio not configured. Please set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN environment variables." 
+        });
+      }
 
-          // Call callee
-          await twilioClient.calls.create({
-            to: calleeProfile.phoneNumber,
-            from: process.env.TWILIO_PHONE_NUMBER,
-            twiml: `<Response><Dial><Conference>${conferenceName}</Conference></Dial></Response>`,
-          });
+      if (!process.env.TWILIO_PHONE_NUMBER) {
+        console.log("TWILIO_PHONE_NUMBER not set");
+        return res.status(400).json({ 
+          ...call, 
+          mock: true,
+          message: "Twilio phone number not configured. Please set TWILIO_PHONE_NUMBER environment variable." 
+        });
+      }
 
-          await storage.updateDoctorCall(call.id, {
-            twilioCallSid: conferenceName,
-          });
-        } catch (twilioError) {
-          console.error("Twilio call failed:", twilioError);
+      try {
+        const conferenceName = `doctor-call-${call.id}`;
+        let baseUrl = process.env.APP_URL || `http://localhost:${process.env.PORT || 5000}`;
+        
+        // Check if URL is localhost - use inline TwiML for local development
+        const isLocalhost = baseUrl.includes('localhost') || baseUrl.includes('127.0.0.1');
+        
+        if (isLocalhost) {
+          console.warn("⚠️  WARNING: Using localhost. For production, use a publicly accessible URL.");
+          console.warn("   For local development with Twilio, use ngrok:");
+          console.warn("   1. Run in separate terminal: ngrok http 5000");
+          console.warn("   2. Set APP_URL in .env to the ngrok HTTPS URL");
+          console.warn("   Using inline TwiML as fallback (may not work for all Twilio features)...");
         }
+        
+        console.log(`Initiating Twilio doctor call: Caller ${callerProfile.phoneNumber}, Callee ${calleeProfile.phoneNumber}`);
+        
+        // Use inline TwiML for localhost, URL for public URLs
+        const twiml = `<?xml version="1.0" encoding="UTF-8"?><Response><Dial><Conference>${conferenceName}</Conference></Dial></Response>`;
+        
+        let callOptions: any = {
+          to: callerProfile.phoneNumber,
+          from: process.env.TWILIO_PHONE_NUMBER,
+        };
+        
+        if (isLocalhost) {
+          // Use inline TwiML for localhost
+          callOptions.twiml = twiml;
+          console.log(`Using inline TwiML (localhost mode)`);
+        } else {
+          // Use URL for public servers
+          const twimlUrl = `${baseUrl}/api/twilio/twiml/conference?conference=${encodeURIComponent(conferenceName)}`;
+          callOptions.url = twimlUrl;
+          callOptions.statusCallback = `${baseUrl}/api/twilio/webhook/status`;
+          callOptions.statusCallbackEvent = ['initiated', 'ringing', 'answered', 'completed'];
+          console.log(`TwiML URL: ${twimlUrl}`);
+        }
+
+        // Call caller
+        const callerTwilioCall = await twilioClient.calls.create(callOptions);
+
+        console.log(`Caller call SID: ${callerTwilioCall.sid}`);
+
+        // Call callee (same options)
+        const calleeCallOptions = { ...callOptions, to: calleeProfile.phoneNumber };
+        const calleeTwilioCall = await twilioClient.calls.create(calleeCallOptions);
+
+        console.log(`Callee call SID: ${calleeTwilioCall.sid}`);
+
+        await storage.updateDoctorCall(call.id, {
+          twilioCallSid: conferenceName,
+        });
+      } catch (twilioError: any) {
+        console.error("Twilio call failed:", twilioError);
+        console.error("Error details:", {
+          message: twilioError.message,
+          code: twilioError.code,
+          status: twilioError.status,
+          moreInfo: twilioError.moreInfo,
+        });
+        // Update call status
+        await storage.updateDoctorCall(call.id, { isLive: false, endedAt: new Date() });
+        return res.status(500).json({ 
+          message: "Failed to initiate call", 
+          error: twilioError.message || "Twilio service error",
+          code: twilioError.code,
+        });
       }
 
       await storage.createAuditLog({
@@ -856,6 +1199,24 @@ export async function registerRoutes(
       console.error("Error initiating doctor call:", error);
       res.status(500).json({ message: "Internal server error" });
     }
+  });
+
+  // TwiML endpoint for conference calls
+  app.get("/api/twilio/twiml/conference", async (req, res) => {
+    const conferenceName = req.query.conference as string;
+    if (!conferenceName) {
+      return res.status(400).send("Conference name required");
+    }
+    
+    const twiml = `<?xml version="1.0" encoding="UTF-8"?>
+<Response>
+  <Dial>
+    <Conference>${conferenceName}</Conference>
+  </Dial>
+</Response>`;
+    
+    res.type('text/xml');
+    res.send(twiml);
   });
 
   app.post("/api/twilio/webhook/status", async (req, res) => {

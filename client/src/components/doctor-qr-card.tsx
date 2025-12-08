@@ -8,6 +8,7 @@ import type { User, DoctorProfile } from "@shared/schema";
 interface DoctorQrCardProps {
   doctor: User & { doctorProfile?: DoctorProfile | null };
   qrCodeUrl?: string;
+  linkUrl?: string;
   onGenerateQr?: () => void;
   onRefreshQr?: () => void;
   isLoading?: boolean;
@@ -25,6 +26,7 @@ function getInitials(name: string): string {
 export function DoctorQrCard({
   doctor,
   qrCodeUrl,
+  linkUrl,
   onGenerateQr,
   onRefreshQr,
   isLoading,
@@ -32,8 +34,25 @@ export function DoctorQrCard({
   const [copied, setCopied] = useState(false);
 
   const handleCopyLink = async () => {
-    if (qrCodeUrl) {
-      await navigator.clipboard.writeText(qrCodeUrl);
+    // Copy the actual link URL, not the QR code image URL
+    let urlToCopy = linkUrl;
+    
+    // If linkUrl is not provided, try to extract it from the QR code URL
+    if (!urlToCopy && qrCodeUrl) {
+      try {
+        const url = new URL(qrCodeUrl);
+        const dataParam = url.searchParams.get("data");
+        if (dataParam) {
+          urlToCopy = decodeURIComponent(dataParam);
+        }
+      } catch (e) {
+        // If extraction fails, fall back to qrCodeUrl (shouldn't happen)
+        urlToCopy = qrCodeUrl;
+      }
+    }
+    
+    if (urlToCopy) {
+      await navigator.clipboard.writeText(urlToCopy);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     }

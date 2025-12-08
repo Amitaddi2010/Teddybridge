@@ -14,6 +14,7 @@ import type { SurveyRequest, User } from "@shared/schema";
 
 interface PromsTableProps {
   surveys: (SurveyRequest & { patient?: User | null })[];
+  linkedPatients?: (User & { patientProfile?: any })[];
   onSendSurvey?: (patientId: string, type: "preop" | "postop") => void;
   onViewResponse?: (surveyId: string) => void;
   onGenerateReport?: (patientId: string) => void;
@@ -22,27 +23,40 @@ interface PromsTableProps {
 
 export function PromsTable({
   surveys,
+  linkedPatients = [],
   onSendSurvey,
   onViewResponse,
   onGenerateReport,
   isLoading,
 }: PromsTableProps) {
-  const patientSurveys = surveys.reduce((acc, survey) => {
+  // Start with all linked patients
+  const patientSurveys = (linkedPatients || []).reduce((acc, patient) => {
+    if (!acc[patient.id]) {
+      acc[patient.id] = {
+        patient: patient as User,
+        preop: null as SurveyRequest | null,
+        postop: null as SurveyRequest | null,
+      };
+    }
+    return acc;
+  }, {} as Record<string, { patient?: User | null; preop: SurveyRequest | null; postop: SurveyRequest | null }>);
+
+  // Add survey data
+  surveys.forEach(survey => {
     const patientId = survey.patientId;
-    if (!acc[patientId]) {
-      acc[patientId] = {
+    if (!patientSurveys[patientId]) {
+      patientSurveys[patientId] = {
         patient: survey.patient,
         preop: null as SurveyRequest | null,
         postop: null as SurveyRequest | null,
       };
     }
     if (survey.when === "preop") {
-      acc[patientId].preop = survey;
+      patientSurveys[patientId].preop = survey;
     } else if (survey.when === "postop") {
-      acc[patientId].postop = survey;
+      patientSurveys[patientId].postop = survey;
     }
-    return acc;
-  }, {} as Record<string, { patient?: User | null; preop: SurveyRequest | null; postop: SurveyRequest | null }>);
+  });
 
   const renderSurveyAction = (
     survey: SurveyRequest | null,

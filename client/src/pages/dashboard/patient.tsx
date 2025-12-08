@@ -13,6 +13,7 @@ import { MeetingCard } from "@/components/meeting-card";
 import { InviteDialog } from "@/components/invite-dialog";
 import { ScheduleDialog } from "@/components/schedule-dialog";
 import { CallView } from "@/components/call-view";
+import { EditPatientProfileDialog } from "@/components/edit-patient-profile-dialog";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -23,9 +24,15 @@ import {
   Search, 
   LogOut, 
   Link as LinkIcon,
-  Phone
+  Phone,
+  ClipboardCheck,
+  ExternalLink,
+  ChevronDown,
+  ChevronUp,
+  User as UserIcon,
+  Edit
 } from "lucide-react";
-import type { User, PatientProfile, PatientConnection } from "@shared/schema";
+import type { User, PatientProfile, PatientConnection, SurveyRequest } from "@shared/schema";
 
 type PatientWithProfile = User & { patientProfile?: PatientProfile | null };
 type ConnectionWithUsers = PatientConnection & { 
@@ -41,6 +48,8 @@ export default function PatientDashboard() {
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<PatientWithProfile | null>(null);
   const [activeCall, setActiveCall] = useState<{ participantName: string } | null>(null);
+  const [expandedSurveys, setExpandedSurveys] = useState<Set<string>>(new Set());
+  const [editProfileDialogOpen, setEditProfileDialogOpen] = useState(false);
 
   const { data: patients, isLoading: loadingPatients } = useQuery<PatientWithProfile[]>({
     queryKey: ["/api/patient/available"],
@@ -48,6 +57,46 @@ export default function PatientDashboard() {
 
   const { data: connections, isLoading: loadingConnections } = useQuery<ConnectionWithUsers[]>({
     queryKey: ["/api/patient/connections"],
+  });
+
+  const { data: linkedDoctors, isLoading: loadingLinkedDoctors } = useQuery<any[]>({
+    queryKey: ["/api/patient/linked-doctors"],
+  });
+
+  const { data: surveys, isLoading: loadingSurveys } = useQuery<SurveyRequest[]>({
+    queryKey: ["/api/patient/surveys"],
+  });
+
+  const { refreshUser } = useAuth();
+  
+  const updateProfileMutation = useMutation({
+    mutationFn: async (data: {
+      name?: string;
+      phoneNumber?: string;
+      demographics?: {
+        age?: number;
+        gender?: string;
+        procedure?: string;
+      };
+    }) => {
+      return apiRequest("PUT", "/api/user/profile", data);
+    },
+    onSuccess: async () => {
+      await refreshUser();
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      setEditProfileDialogOpen(false);
+      toast({
+        title: "Profile updated!",
+        description: "Your profile has been successfully updated.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to update profile",
+        description: error instanceof Error ? error.message : "Something went wrong",
+        variant: "destructive",
+      });
+    },
   });
 
   const sendInviteMutation = useMutation({
@@ -205,8 +254,20 @@ export default function PatientDashboard() {
               <Calendar className="h-4 w-4" />
               Meetings
             </Button>
-            <Button variant="ghost" size="sm" className="gap-2">
-              <LinkIcon className="h-4 w-4" />
+            <Button 
+              variant="ghost" 
+              size="sm" 
+              className="gap-2"
+              onClick={() => {
+                const tabsList = document.querySelector('[role="tablist"]');
+                const profileTab = document.querySelector('[data-testid="tab-profile"]') as HTMLElement;
+                if (profileTab) {
+                  profileTab.click();
+                  window.scrollTo({ top: 0, behavior: 'smooth' });
+                }
+              }}
+            >
+              <UserIcon className="h-4 w-4" />
               My Profile
             </Button>
           </nav>
@@ -257,9 +318,31 @@ export default function PatientDashboard() {
                 </span>
               )}
             </TabsTrigger>
+            <TabsTrigger value="doctors" className="gap-2" data-testid="tab-doctors">
+              <LinkIcon className="h-4 w-4" />
+              My Doctors
+              {(linkedDoctors && linkedDoctors.length > 0) && (
+                <span className="ml-1 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
+                  {linkedDoctors.length}
+                </span>
+              )}
+            </TabsTrigger>
+            <TabsTrigger value="surveys" className="gap-2" data-testid="tab-surveys">
+              <ClipboardCheck className="h-4 w-4" />
+              Surveys
+              {(surveys && surveys.filter(s => s.status === "SENT" || s.status === "PENDING").length > 0) && (
+                <span className="ml-1 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
+                  {surveys.filter(s => s.status === "SENT" || s.status === "PENDING").length}
+                </span>
+              )}
+            </TabsTrigger>
             <TabsTrigger value="meetings" className="gap-2" data-testid="tab-meetings">
               <Calendar className="h-4 w-4" />
               Meetings
+            </TabsTrigger>
+            <TabsTrigger value="profile" className="gap-2" data-testid="tab-profile">
+              <UserIcon className="h-4 w-4" />
+              My Profile
             </TabsTrigger>
           </TabsList>
 
@@ -419,6 +502,206 @@ export default function PatientDashboard() {
             </div>
           </TabsContent>
 
+          <TabsContent value="doctors" className="space-y-6">
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold text-lg">Linked Doctors</h3>
+                <p className="text-sm text-muted-foreground">
+                  Doctors you've linked with via QR code
+                </p>
+              </div>
+              {loadingLinkedDoctors ? (
+                <div className="grid md:grid-cols-2 gap-4">
+                  {[1, 2].map(i => (
+                    <Skeleton key={i} className="h-32" />
+                  ))}
+                </div>
+              ) : !linkedDoctors || linkedDoctors.length === 0 ? (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <LinkIcon className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+                    <h3 className="font-semibold text-lg mb-2">No doctors linked</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Scan a doctor's QR code to link with them
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  {linkedDoctors.map((record) => {
+                    const doctor = record.doctor;
+                    if (!doctor) return null;
+                    return (
+                      <Card key={record.id} className="hover-elevate">
+                        <CardContent className="p-4">
+                          <div className="flex items-start gap-3">
+                            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                              <Users className="h-6 w-6 text-primary" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold truncate">{doctor.name}</p>
+                              {doctor.doctorProfile?.specialty && (
+                                <p className="text-sm text-muted-foreground truncate">
+                                  {doctor.doctorProfile.specialty}
+                                </p>
+                              )}
+                              {doctor.doctorProfile?.city && (
+                                <p className="text-xs text-muted-foreground truncate">
+                                  {doctor.doctorProfile.city}
+                                </p>
+                              )}
+                              <p className="text-xs text-muted-foreground mt-1">
+                                Linked {new Date(record.linkedAt).toLocaleDateString()}
+                              </p>
+                            </div>
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
+          <TabsContent value="surveys" className="space-y-6">
+            <div className="space-y-4">
+              <div>
+                <h3 className="font-semibold text-lg">Health Surveys</h3>
+                <p className="text-sm text-muted-foreground">
+                  Complete surveys sent by your doctors to track your health outcomes
+                </p>
+              </div>
+              {loadingSurveys ? (
+                <div className="space-y-3">
+                  {[1, 2, 3].map(i => (
+                    <Skeleton key={i} className="h-24" />
+                  ))}
+                </div>
+              ) : !surveys || surveys.length === 0 ? (
+                <Card>
+                  <CardContent className="py-12 text-center">
+                    <ClipboardCheck className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+                    <h3 className="font-semibold text-lg mb-2">No surveys yet</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Your doctors will send you surveys to complete
+                    </p>
+                  </CardContent>
+                </Card>
+              ) : (
+                <div className="space-y-3">
+                  {surveys.map((survey) => {
+                    const isPending = survey.status === "PENDING" || survey.status === "SENT";
+                    const isCompleted = survey.status === "COMPLETED";
+                    const isExpanded = expandedSurveys.has(survey.id);
+                    const surveyUrl = survey.surveyLink || "https://redcap.link/CarebridgeAI";
+                    
+                    return (
+                      <Card key={survey.id} className="hover-elevate">
+                        <CardContent className="p-4">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-2">
+                                <h4 className="font-semibold">
+                                  {survey.formName || `${survey.when === 'preop' ? 'Pre-Operative' : 'Post-Operative'} Survey`}
+                                </h4>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${
+                                  isCompleted 
+                                    ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
+                                    : isPending
+                                    ? 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
+                                    : 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-300'
+                                }`}>
+                                  {survey.status}
+                                </span>
+                              </div>
+                              <p className="text-sm text-muted-foreground mb-2">
+                                {survey.when === 'preop' ? 'Pre-Operative' : survey.when === 'postop' ? 'Post-Operative' : 'General'} Health Survey
+                              </p>
+                              {survey.scheduledAt && (
+                                <p className="text-xs text-muted-foreground">
+                                  Scheduled: {new Date(survey.scheduledAt).toLocaleDateString()}
+                                </p>
+                              )}
+                              {survey.createdAt && (
+                                <p className="text-xs text-muted-foreground">
+                                  Sent: {new Date(survey.createdAt).toLocaleDateString()}
+                                </p>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2">
+                              {isPending && surveyUrl && (
+                                <>
+                                  <Button
+                                    variant="outline"
+                                    onClick={() => {
+                                      const newExpanded = new Set(expandedSurveys);
+                                      if (isExpanded) {
+                                        newExpanded.delete(survey.id);
+                                      } else {
+                                        newExpanded.add(survey.id);
+                                      }
+                                      setExpandedSurveys(newExpanded);
+                                    }}
+                                    data-testid={`button-toggle-survey-${survey.id}`}
+                                  >
+                                    {isExpanded ? (
+                                      <>
+                                        <ChevronUp className="h-4 w-4 mr-2" />
+                                        Hide Survey
+                                      </>
+                                    ) : (
+                                      <>
+                                        <ChevronDown className="h-4 w-4 mr-2" />
+                                        Show Survey
+                                      </>
+                                    )}
+                                  </Button>
+                                  <Button
+                                    onClick={() => window.open(surveyUrl, '_blank')}
+                                    data-testid={`button-open-survey-${survey.id}`}
+                                  >
+                                    <ExternalLink className="h-4 w-4 mr-2" />
+                                    Open in New Tab
+                                  </Button>
+                                </>
+                              )}
+                              {isCompleted && (
+                                <div className="text-sm text-muted-foreground">
+                                  Completed {survey.completedAt ? new Date(survey.completedAt).toLocaleDateString() : ''}
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                          {isPending && isExpanded && surveyUrl && (
+                            <div className="mt-4 border-t pt-4">
+                              <div className="mb-2">
+                                <p className="text-sm font-medium mb-1">Complete the survey below:</p>
+                                <p className="text-xs text-muted-foreground">
+                                  Fill out all required fields and submit when finished.
+                                </p>
+                              </div>
+                              <div className="w-full border rounded-lg overflow-hidden" style={{ minHeight: '600px' }}>
+                                <iframe
+                                  src={surveyUrl}
+                                  className="w-full h-full"
+                                  style={{ minHeight: '600px', border: 'none' }}
+                                  title={`${survey.formName || 'Health Survey'} - REDCap`}
+                                  allow="fullscreen"
+                                  data-testid={`iframe-survey-${survey.id}`}
+                                />
+                              </div>
+                            </div>
+                          )}
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </TabsContent>
+
           <TabsContent value="meetings" className="space-y-6">
             <div className="space-y-4">
               <h3 className="font-semibold text-lg">Scheduled Meetings</h3>
@@ -453,6 +736,127 @@ export default function PatientDashboard() {
               )}
             </div>
           </TabsContent>
+
+          <TabsContent value="profile" className="space-y-6">
+            <div className="space-y-6">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="font-semibold text-lg mb-2">My Profile</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Your personal information and health profile
+                  </p>
+                </div>
+                <Button
+                  onClick={() => setEditProfileDialogOpen(true)}
+                  variant="outline"
+                  data-testid="button-edit-profile"
+                >
+                  <Edit className="h-4 w-4 mr-2" />
+                  Edit Profile
+                </Button>
+              </div>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Personal Information</CardTitle>
+                  <CardDescription>
+                    Your account and contact details
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2">
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Name</label>
+                      <p className="text-sm font-medium mt-1">{user?.name || "Not set"}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Email</label>
+                      <p className="text-sm font-medium mt-1">{user?.email || "Not set"}</p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Phone Number</label>
+                      <p className="text-sm font-medium mt-1">
+                        {user?.patientProfile?.phoneNumber || "Not provided"}
+                      </p>
+                    </div>
+                    <div>
+                      <label className="text-sm font-medium text-muted-foreground">Account Type</label>
+                      <p className="text-sm font-medium mt-1 capitalize">{user?.role?.toLowerCase() || "Patient"}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Health Information</CardTitle>
+                  <CardDescription>
+                    Your medical and demographic information
+                  </CardDescription>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {user?.patientProfile?.demographics ? (
+                    <div className="grid gap-4 md:grid-cols-2">
+                      {user.patientProfile.demographics.age && (
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground">Age</label>
+                          <p className="text-sm font-medium mt-1">{user.patientProfile.demographics.age} years</p>
+                        </div>
+                      )}
+                      {user.patientProfile.demographics.gender && (
+                        <div>
+                          <label className="text-sm font-medium text-muted-foreground">Gender</label>
+                          <p className="text-sm font-medium mt-1">{user.patientProfile.demographics.gender}</p>
+                        </div>
+                      )}
+                      {user.patientProfile.demographics.procedure && (
+                        <div className="md:col-span-2">
+                          <label className="text-sm font-medium text-muted-foreground">Procedure</label>
+                          <p className="text-sm font-medium mt-1">{user.patientProfile.demographics.procedure}</p>
+                        </div>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="py-8 text-center text-muted-foreground">
+                      <p>No health information available</p>
+                      <p className="text-xs mt-2">Your doctor may add this information during your consultation</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle>Account Statistics</CardTitle>
+                  <CardDescription>
+                    Your activity and connections summary
+                  </CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid gap-4 md:grid-cols-3">
+                    <div className="text-center p-4 rounded-lg border">
+                      <p className="text-2xl font-bold text-primary">
+                        {connections?.filter(c => c.status === "CONFIRMED").length || 0}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">Active Connections</p>
+                    </div>
+                    <div className="text-center p-4 rounded-lg border">
+                      <p className="text-2xl font-bold text-primary">
+                        {linkedDoctors?.length || 0}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">Linked Doctors</p>
+                    </div>
+                    <div className="text-center p-4 rounded-lg border">
+                      <p className="text-2xl font-bold text-primary">
+                        {surveys?.filter(s => s.status === "COMPLETED").length || 0}
+                      </p>
+                      <p className="text-sm text-muted-foreground mt-1">Completed Surveys</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+          </TabsContent>
         </Tabs>
       </main>
 
@@ -461,6 +865,14 @@ export default function PatientDashboard() {
         onOpenChange={setInviteDialogOpen}
         onSubmit={(email) => sendInviteMutation.mutate(email)}
         isLoading={sendInviteMutation.isPending}
+      />
+
+      <EditPatientProfileDialog
+        open={editProfileDialogOpen}
+        onOpenChange={setEditProfileDialogOpen}
+        onSubmit={(data) => updateProfileMutation.mutate(data)}
+        isLoading={updateProfileMutation.isPending}
+        user={user}
       />
 
       <ScheduleDialog

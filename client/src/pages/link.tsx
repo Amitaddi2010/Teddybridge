@@ -9,7 +9,7 @@ import { ThemeToggle } from "@/components/theme-toggle";
 import { DoctorLinkCard } from "@/components/doctor-link-card";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
-import { apiRequest } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import { ArrowLeft, AlertCircle, LogIn } from "lucide-react";
 import type { User, DoctorProfile, LinkRecord } from "@shared/schema";
 
@@ -42,6 +42,8 @@ export default function LinkPage() {
       return apiRequest("POST", "/api/qr/link", { token });
     },
     onSuccess: () => {
+      // Invalidate linked doctors query so dashboard refreshes
+      queryClient.invalidateQueries({ queryKey: ["/api/patient/linked-doctors"] });
       toast({
         title: "Successfully linked!",
         description: `You are now connected with ${doctorData?.doctor.name}`,

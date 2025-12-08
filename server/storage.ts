@@ -43,10 +43,15 @@ export interface IStorage {
   // Patient Profiles
   createPatientProfile(profile: InsertPatientProfile): Promise<PatientProfile>;
   getPatientProfile(userId: string): Promise<PatientProfile | undefined>;
+  updatePatientProfile(userId: string, updates: Partial<InsertPatientProfile>): Promise<PatientProfile | undefined>;
   
   // Doctor Profiles
   createDoctorProfile(profile: InsertDoctorProfile): Promise<DoctorProfile>;
   getDoctorProfile(userId: string): Promise<DoctorProfile | undefined>;
+  updateDoctorProfile(userId: string, updates: Partial<InsertDoctorProfile>): Promise<DoctorProfile | undefined>;
+  
+  // Users
+  updateUser(id: string, updates: Partial<InsertUser>): Promise<User | undefined>;
   
   // Patient Connections
   createPatientConnection(connection: InsertPatientConnection): Promise<PatientConnection>;
@@ -139,6 +144,60 @@ export class DatabaseStorage implements IStorage {
     return profile;
   }
 
+  async updatePatientProfile(userId: string, updates: Partial<InsertPatientProfile>): Promise<PatientProfile | undefined> {
+    const existingProfile = await this.getPatientProfile(userId);
+    if (!existingProfile) {
+      // Create profile if it doesn't exist
+      const profileToInsert = {
+        userId,
+        phoneNumber: updates.phoneNumber || null,
+        demographics: updates.demographics || null,
+      };
+      return await this.createPatientProfile(profileToInsert);
+    }
+    
+    // Build update object, preserving existing values when new ones are not provided
+    const profileToUpdate: Partial<InsertPatientProfile> = {};
+    
+    // Handle phoneNumber
+    if (updates.phoneNumber !== undefined) {
+      profileToUpdate.phoneNumber = updates.phoneNumber || null;
+    }
+    
+    // Handle demographics - merge with existing if provided
+    if (updates.demographics !== undefined) {
+      if (updates.demographics === null) {
+        // Clear demographics
+        profileToUpdate.demographics = null;
+      } else {
+        const existingDemographics = existingProfile.demographics || {};
+        profileToUpdate.demographics = {
+          age: updates.demographics.age !== undefined && updates.demographics.age !== null 
+            ? (typeof updates.demographics.age === 'number' ? updates.demographics.age : existingDemographics.age)
+            : (updates.demographics.age === null ? null : existingDemographics.age),
+          gender: updates.demographics.gender !== undefined 
+            ? (updates.demographics.gender || null) 
+            : existingDemographics.gender,
+          procedure: updates.demographics.procedure !== undefined 
+            ? (updates.demographics.procedure || null) 
+            : existingDemographics.procedure,
+        };
+      }
+    }
+    
+    // Only update if there are changes
+    if (Object.keys(profileToUpdate).length === 0) {
+      return existingProfile;
+    }
+    
+    const [updated] = await db
+      .update(patientProfiles)
+      .set(profileToUpdate)
+      .where(eq(patientProfiles.userId, userId))
+      .returning();
+    return updated;
+  }
+
   // Doctor Profiles
   async createDoctorProfile(profile: InsertDoctorProfile): Promise<DoctorProfile> {
     const [created] = await db.insert(doctorProfiles).values(profile).returning();
@@ -148,6 +207,57 @@ export class DatabaseStorage implements IStorage {
   async getDoctorProfile(userId: string): Promise<DoctorProfile | undefined> {
     const [profile] = await db.select().from(doctorProfiles).where(eq(doctorProfiles.userId, userId));
     return profile;
+  }
+
+  async updateDoctorProfile(userId: string, updates: Partial<InsertDoctorProfile>): Promise<DoctorProfile | undefined> {
+    const existingProfile = await this.getDoctorProfile(userId);
+    if (!existingProfile) {
+      // Create profile if it doesn't exist
+      return await this.createDoctorProfile({
+        userId,
+        phoneNumber: updates.phoneNumber || "",
+        specialty: updates.specialty || null,
+        city: updates.city || null,
+        available: updates.available !== undefined ? updates.available : true,
+      });
+    }
+    
+    // Build update object, only including fields that are provided
+    const profileToUpdate: Partial<InsertDoctorProfile> = {};
+    
+    if (updates.phoneNumber !== undefined) {
+      profileToUpdate.phoneNumber = updates.phoneNumber || "";
+    }
+    if (updates.specialty !== undefined) {
+      profileToUpdate.specialty = updates.specialty || null;
+    }
+    if (updates.city !== undefined) {
+      profileToUpdate.city = updates.city || null;
+    }
+    if (updates.available !== undefined) {
+      profileToUpdate.available = updates.available;
+    }
+    
+    // Only update if there are changes
+    if (Object.keys(profileToUpdate).length === 0) {
+      return existingProfile;
+    }
+    
+    const [updated] = await db
+      .update(doctorProfiles)
+      .set(profileToUpdate)
+      .where(eq(doctorProfiles.userId, userId))
+      .returning();
+    return updated;
+  }
+
+  async updateUser(id: string, updates: Partial<InsertUser>): Promise<User | undefined> {
+    const [updated] = await db
+      .update(users)
+      .set(updates)
+      .where(eq(users.id, id))
+      .returning();
+    return updated;
   }
 
   // Patient Connections

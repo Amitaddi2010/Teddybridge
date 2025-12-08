@@ -22,6 +22,7 @@ import { StatsCard } from "@/components/stats-card";
 import { PromsTable } from "@/components/proms-table";
 import { DoctorQrCard } from "@/components/doctor-qr-card";
 import { CallView } from "@/components/call-view";
+import { EditDoctorProfileDialog } from "@/components/edit-doctor-profile-dialog";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -35,6 +36,7 @@ import {
   QrCode,
   Send,
   UserPlus,
+  Edit,
 } from "lucide-react";
 import type { SurveyRequest, User, DoctorProfile, LinkRecord } from "@shared/schema";
 
@@ -50,12 +52,13 @@ export default function DoctorDashboard() {
     transcript?: string;
     aiSummary?: string;
   } | null>(null);
+  const [editProfileDialogOpen, setEditProfileDialogOpen] = useState(false);
 
   const { data: surveys, isLoading: loadingSurveys } = useQuery<SurveyWithPatient[]>({
     queryKey: ["/api/doctor/surveys"],
   });
 
-  const { data: linkedPatients, isLoading: loadingPatients } = useQuery<LinkRecord[]>({
+  const { data: linkedPatients, isLoading: loadingPatients } = useQuery<(LinkRecord & { patient?: { id: string; name: string; email: string; patientProfile?: any } })[]>({
     queryKey: ["/api/doctor/linked-patients"],
   });
 
@@ -65,6 +68,35 @@ export default function DoctorDashboard() {
 
   const { data: doctors } = useQuery<DoctorWithProfile[]>({
     queryKey: ["/api/doctor/available"],
+  });
+
+  const { refreshUser } = useAuth();
+  
+  const updateProfileMutation = useMutation({
+    mutationFn: async (data: {
+      name?: string;
+      phoneNumber?: string;
+      specialty?: string;
+      city?: string;
+    }) => {
+      return apiRequest("PUT", "/api/user/profile", data);
+    },
+    onSuccess: async () => {
+      await refreshUser();
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      setEditProfileDialogOpen(false);
+      toast({
+        title: "Profile updated!",
+        description: "Your profile has been successfully updated.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        title: "Failed to update profile",
+        description: error instanceof Error ? error.message : "Something went wrong",
+        variant: "destructive",
+      });
+    },
   });
 
   const generateQrMutation = useMutation({
@@ -287,6 +319,7 @@ export default function DoctorDashboard() {
                     <DoctorQrCard
                       doctor={user as DoctorWithProfile}
                       qrCodeUrl={qrCode?.qrCodeUrl}
+                      linkUrl={qrCode?.linkUrl}
                       onGenerateQr={() => generateQrMutation.mutate()}
                       onRefreshQr={() => generateQrMutation.mutate()}
                       isLoading={generateQrMutation.isPending}
@@ -333,23 +366,57 @@ export default function DoctorDashboard() {
                   </Card>
                 ) : (
                   <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    {linkedPatients?.map(record => (
-                      <Card key={record.id} className="hover-elevate">
-                        <CardContent className="p-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                              <Users className="h-5 w-5 text-primary" />
+                    {linkedPatients?.map(record => {
+                      const patient = record.patient;
+                      return (
+                        <Card key={record.id} className="hover-elevate">
+                          <CardContent className="p-4">
+                            <div className="flex items-center gap-3">
+                              <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                <Users className="h-5 w-5 text-primary" />
+                              </div>
+                              <div className="flex-1 min-w-0">
+                                <p className="font-medium truncate">
+                                  {patient?.name || `Patient #${record.patientId.slice(0, 8)}`}
+                                </p>
+                                {patient?.email && (
+                                  <p className="text-sm text-muted-foreground truncate">
+                                    {patient.email}
+                                  </p>
+                                )}
+                                {patient?.patientProfile?.phoneNumber && (
+                                  <p className="text-xs text-muted-foreground truncate">
+                                    {patient.patientProfile.phoneNumber}
+                                  </p>
+                                )}
+                                <p className="text-xs text-muted-foreground mt-1">
+                                  Linked {new Date(record.linkedAt).toLocaleDateString()}
+                                </p>
+                              </div>
                             </div>
-                            <div className="flex-1">
-                              <p className="font-medium">Patient #{record.patientId.slice(0, 8)}</p>
-                              <p className="text-sm text-muted-foreground">
-                                Linked {new Date(record.linkedAt).toLocaleDateString()}
-                              </p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))}
+                            {patient && (
+                              <div className="mt-3 pt-3 border-t">
+                                <Button
+                                  variant="outline"
+                                  size="sm"
+                                  className="w-full"
+                                  onClick={() => {
+                                    sendSurveyMutation.mutate({ 
+                                      patientId: patient.id, 
+                                      type: "preop" 
+                                    });
+                                  }}
+                                  disabled={sendSurveyMutation.isPending}
+                                >
+                                  <Send className="h-3 w-3 mr-1" />
+                                  Send Survey
+                                </Button>
+                              </div>
+                            )}
+                          </CardContent>
+                        </Card>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -357,18 +424,31 @@ export default function DoctorDashboard() {
 
             {activeTab === "proms" && (
               <div className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold">PROMS Management</h2>
-                  <p className="text-muted-foreground">
-                    Send and track patient-reported outcome surveys
-                  </p>
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-2xl font-bold">PROMS Management</h2>
+                    <p className="text-muted-foreground">
+                      Send and track patient-reported outcome surveys
+                    </p>
+                  </div>
+                  {linkedPatients && linkedPatients.length > 0 && (
+                    <div className="text-sm text-muted-foreground">
+                      {linkedPatients.length} linked patient{linkedPatients.length !== 1 ? 's' : ''}
+                    </div>
+                  )}
                 </div>
 
-                {loadingSurveys ? (
+                {loadingSurveys || loadingPatients ? (
                   <Skeleton className="h-64" />
                 ) : (
                   <PromsTable
                     surveys={surveys || []}
+                    linkedPatients={linkedPatients?.map(r => ({
+                      id: r.patient?.id || r.patientId,
+                      name: r.patient?.name || "Unknown Patient",
+                      email: r.patient?.email || "",
+                      patientProfile: r.patient?.patientProfile,
+                    })).filter(p => p.id) as User[] || []}
                     onSendSurvey={(patientId, type) => 
                       sendSurveyMutation.mutate({ patientId, type })
                     }
@@ -445,7 +525,18 @@ export default function DoctorDashboard() {
 
                 <Card>
                   <CardHeader>
-                    <CardTitle>Profile Information</CardTitle>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>Profile Information</CardTitle>
+                      <Button
+                        onClick={() => setEditProfileDialogOpen(true)}
+                        variant="outline"
+                        size="sm"
+                        data-testid="button-edit-profile"
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        Edit Profile
+                      </Button>
+                    </div>
                   </CardHeader>
                   <CardContent className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-2">
@@ -477,6 +568,14 @@ export default function DoctorDashboard() {
           </main>
         </div>
       </div>
+
+      <EditDoctorProfileDialog
+        open={editProfileDialogOpen}
+        onOpenChange={setEditProfileDialogOpen}
+        onSubmit={(data) => updateProfileMutation.mutate(data)}
+        isLoading={updateProfileMutation.isPending}
+        user={user}
+      />
     </SidebarProvider>
   );
 }
