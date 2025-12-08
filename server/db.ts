@@ -1,8 +1,29 @@
-import { drizzle } from "drizzle-orm/better-sqlite3";
-import Database from "better-sqlite3";
 import * as schema from "@shared/schema";
 
-const dbPath = process.env.DATABASE_URL || "./database.sqlite";
+// Support both SQLite (development) and PostgreSQL (production)
+const isPostgres = process.env.DATABASE_URL?.startsWith("postgresql://") || 
+                   process.env.DATABASE_URL?.startsWith("postgres://");
 
-export const sqlite = new Database(dbPath);
-export const db = drizzle(sqlite, { schema });
+let db: any;
+
+if (isPostgres) {
+  // PostgreSQL for production (Render, etc.)
+  const { drizzle } = require("drizzle-orm/node-postgres");
+  const { Pool } = require("pg");
+  
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL must be set for PostgreSQL");
+  }
+  
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  db = drizzle(pool, { schema });
+} else {
+  // SQLite for local development
+  const { drizzle } = require("drizzle-orm/better-sqlite3");
+  const Database = require("better-sqlite3");
+  const dbPath = process.env.DATABASE_URL || "./database.sqlite";
+  const sqlite = new Database(dbPath);
+  db = drizzle(sqlite, { schema });
+}
+
+export { db };
