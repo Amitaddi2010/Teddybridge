@@ -1,0 +1,386 @@
+You are an expert full-stack engineer. Build a minimal, secure, production-ready scaffold for a healthcare coordination platform called **TeddyCare**. Follow these non-negotiable business rules exactly.
+
+IMPORTANT: be strict — any feature not explicitly allowed below must NOT be implemented.
+
+=======================
+BUSINESS RULES (strict)
+=======================
+- Doctors MUST NEVER talk to patients on the platform. No patient→doctor chats, calls, scheduling, file share, or medical advice.
+- Only allowed communications:
+  - Doctor ↔ Doctor calls (via Twilio phone bridging).
+  - Patient ↔ Patient connections and scheduling (email-based invites or a slider UI that emails invites).
+  - Patient scans QR → links to Doctor record (no direct voice/video, no messaging).
+- PROMs & Surveys stored only via REDCap integration.
+- If a feature is not explicitly listed in this prompt, do NOT implement it.
+
+=======================
+TECH STACK (required)
+=======================
+- Frontend: Next.js (latest stable) + React + TailwindCSS
+- Backend/API: Next.js API routes (Node.js)
+- DB: PostgreSQL with Prisma ORM
+- Auth: NextAuth (email/password + role field: "patient" or "doctor"); separate onboarding flows and role-based redirects
+- Email: SendGrid (patient→patient invites & confirmations, survey sends)
+- Calls: Twilio Programmable Voice (doctor→doctor & patient→patient conferences) + Twilio Media Streams for doctor→doctor live transcription/summaries
+- QR generation: `qrcode` library; tokenized URLs `/link/{qrToken}`
+- AI summary: OpenAI for doctor→doctor live and final summaries (placeholder integration)
+- REDCap: server-side module to POST PROMs & Surveys to REDCap API and to send REDCap survey links to patients
+- Use TypeScript throughout. Strong typing on API inputs/outputs.
+- Tests: Jest for unit/integration tests
+- Linting/format: ESLint + Prettier
+
+=======================
+UI REFERENCE (MANDATORY)
+=======================
+Use SalesPatriot pages as visual/interaction reference:
+- https://salespatriot.com/
+- https://salespatriot.com/manufacturer
+- https://salespatriot.com/distributor
+
+Map component styles and layout to Tailwind classes. Provide `/app/styleguide.md` mapping components (PrimaryButton, InfoCard, DataTable, LiveSummaryPanel) to Tailwind. Do not copy copyrighted images or content.
+
+=======================
+TWILIO DEFAULTS & WEBHOOKS (use these by default; overridable via env)
+=======================
+- TWILIO_NUMBER: +1 845 697 1736
+- TWILIO_LOCATION: Slate Hill, NY, US
+- Demo webhooks (for reference/testing if env flag enabled):
+  - Voice demo: https://demo.twilio.com/welcome/voice/
+  - SMS demo: https://demo.twilio.com/welcome/sms/reply
+
+=======================
+REDCAP SURVEYS (PRE-OP & POST-OP MONITORING)
+=======================
+Default REDCap project (dev/test) and token (use env override in production):
+- REDCap Project URL: `https://redcap.link/CarebridgeAI`
+- REDCap API token (dev): `9DDEF52A7DA9827D74BB7FEF574632E9`
+
+Implement `/lib/redcap.ts` with:
+- `pushProm(patientId, promData)` — push PROMs, return `redcapRecordId`.
+- `createSurveyLink(patientId, formName, arm = default)` — request survey link, persist `surveyLink` and `redcapRecordId`.
+- `fetchSurveyResponse(redcapRecordId)` — fetch and return response.
+- `registerWebhookOrPoll(project)` — try webhook registration; fallback to poll.
+
+Add endpoints:
+- `POST /api/redcap/survey/send` — send survey to patient, persist SurveyRequest, email link.
+- `GET /api/redcap/survey/status?surveyRequestId=...`
+- `POST /api/redcap/webhook` or `GET /api/redcap/poll` — accept notifications/poll REDCap for new responses.
+- `GET /api/redcap/survey/response?recordId=...`
+
+Data models: SurveyRequest, SurveyResponse (see DB schema below).
+Security: store token in env, encrypt stored responses, audit accesses.
+
+=======================
+REPO SCAFFOLD & DELIVERABLES
+=======================
+Repository must include the following files/folders and implementation:
+
+1) Folder structure (minimum)
+   - /app (Next.js pages & components)
+     - /pages/_app.tsx, /pages/index.tsx, /pages/dashboard/patient.tsx, /pages/dashboard/doctor.tsx
+     - /pages/auth/signup-patient.tsx, /pages/auth/signup-doctor.tsx, /pages/auth/signin.tsx
+     - /pages/link/[token].tsx  (QR landing)
+     - /app/styleguide.md or /app/UI.md (maps SalesPatriot reference to Tailwind components)
+   - /pages/api/*
+     - /api/auth/* (NextAuth)
+     - /api/qr/create (POST -> generate qrToken & return png/dataurl)
+     - /api/qr/verify (GET -> verify token & return link status)
+     - /api/patient/invite (POST -> patient-to-patient invite by email)
+     - /api/patient/invite/accept (POST)
+     - /api/patient/invite/decline (POST)
+     - /api/patient/call/schedule (POST)
+     - /api/patient/call/initiate (POST)
+     - /api/patient/available (GET)
+     - /api/twilio/voice (POST -> TwiML response, start stream or dial for doctor calls)
+     - /api/twilio/call (POST -> initiate doctor→doctor call routing)
+     - /api/twilio/webhook (POST -> Twilio status callbacks for doctor calls)
+     - /api/twilio/stream (WS endpoint or POST fallback -> receive media stream events for doctor calls)
+     - /api/twilio/patient-call-webhook (POST -> Twilio status callbacks for patient calls)
+     - /api/ai/summarize-partial (POST -> incremental live summary for doctor calls)
+     - /api/ai/summarize (POST -> final summary for doctor calls)
+     - /api/redcap/survey/send (POST)
+     - /api/redcap/webhook or /api/redcap/poll (POST/GET)
+     - /api/redcap/promise (POST -> push PROMs data to REDCap)
+   - /prisma/schema.prisma
+   - /lib (twilio.ts, sendgrid.ts, redcap.ts, ai.ts, auth-helpers.ts, qr.ts)
+   - /components (PrimaryButton, InfoCard, DataTable, Sidebar, Header, LiveSummaryPanel, PatientListRow, CallView)
+   - /scripts (seed.ts)
+   - /tests (jest tests)
+   - README.md, .env.example, tsconfig.json, eslint/prettier configs
+
+2) Database schema (Prisma) — minimal & explicit (must match code)
+   - User { id, email, passwordHash, role: Enum('PATIENT','DOCTOR'), name, createdAt }
+   - PatientProfile { id, userId -> User, phoneNumber (nullable), demographics json, createdAt }
+   - DoctorProfile { id, userId -> User, phoneNumber, specialty (nullable), available boolean, createdAt }
+   - PatientConnection { id, requesterPatientId, targetPatientId, status: Enum('PENDING','CONFIRMED','DECLINED'), scheduledAt (datetime, nullable), inviteToken, confirmedAt (nullable), expiresAt, createdAt }
+   - PROM { id, patientId, redcapRecordId, data json, submittedAt }
+   - SurveyRequest { id, patientId, doctorId (nullable), formName, surveyLink, redcapRecordId, when: Enum('preop','postop','other'), scheduledAt (nullable), status: Enum('PENDING','SENT','COMPLETED'), createdAt, completedAt (nullable) }
+   - SurveyResponse { id, surveyRequestId, redcapRecordId, data json, receivedAt }
+   - DoctorCall { id, callerDoctorId, calleeDoctorId, twilioCallSid, transcriptText (nullable), liveSummary (nullable), summaryText (nullable), summaryUpdatedAt (nullable), isLive (boolean), startedAt, endedAt, createdAt }
+   - CallTranscriptChunk { id, doctorCallId, seqNumber, textChunk, createdAt }
+   - LinkRecord { id, patientId, doctorId, linkedAt, qrToken, expiresAt }
+   - PatientCall { id, requesterPatientId, targetPatientId, twilioConferenceName, twilioCallSids json, startedAt, endedAt, isLive boolean, mode enum('voice','video'), createdAt }
+   - AuditLog { id, userId, action, resourceType, resourceId, metadata json, createdAt }
+
+3) Authentication flows (strict)
+   - Two signup pages: `/auth/signup-patient` and `/auth/signup-doctor`. After signup redirect patient → `/dashboard/patient`, doctor → `/dashboard/doctor`.
+   - Enforce role at signup and on protected routes.
+   - Doctor phone verification via Twilio SMS: implement endpoint to send/verify code (placeholder, functional in test mode).
+
+=======================
+QR LOGIC (UPDATED: patient scans QR to link to doctor)
+=======================
+- `/api/qr/create` (server) generates cryptographically secure `qrToken` (UUID + HMAC) tied to a **DoctorProfile** and returns PNG/dataURL. QR encodes `https://<APP_HOST>/link/<qrToken>`
+- QR tokens expire (configurable TTL default 7 days).
+- Flow when a patient scans QR:
+  1. Patient scans QR → browser opens `/link/[token]`.
+  2. If patient not signed in → redirect to patient sign-in (enforce role).
+  3. After sign in, `/link/[token]` verifies token and displays **Doctor summary (read-only)**: doctor name, specialty, location metadata, office contact (display only). No messaging UI.
+  4. Patient clicks **"Link to this Doctor"** → server creates `LinkRecord` (patientId ↔ doctorId), sets `linkedAt`, sends confirmation email to patient. Optionally notify doctor via platform inbox/email (not for patient contact).
+- Scanning QR must NOT create chat/call or allow doctor-initiated contact.
+
+=======================
+PATIENT → PATIENT flow (FULL FEATURESET)
+=======================
+Implement patient dashboard features as specified below — allowed patient↔patient communications and strict security.
+
+A. UI (Patient Dashboard)
+- Available Patients List:
+  - Shows all patients with connection status relative to signed-in user: NOT_CONNECTED, PENDING, CONFIRMED.
+  - Search (by name or email, case-insensitive) and filters (status).
+  - Each row: avatar, name, masked phone (last 4 digits), status badge, Connect / Call Now / Schedule actions (enabled per rules).
+- Connection Requests:
+  - Outgoing & incoming lists with actions: Resend Invite, Cancel, Accept, Decline.
+- Meetings:
+  - Scheduled meetings list with date/time/duration, organizer, status.
+- Call View:
+  - Call UI with states, timer, Mute, End Call.
+
+B. Backend & Endpoints (must implement)
+- `POST /api/patient/invite`
+  - Input: `{ fromPatientId, toEmail }`
+  - Behavior:
+    - Case-insensitive match target patient by email. If not found, create invite record for sign-up path.
+    - Create `PatientConnection` status=PENDING with secure inviteToken and expiresAt.
+    - Send email via SendGrid with invite link.
+    - Audit log the invite creation.
+    - Return `{ inviteId, status }`.
+
+- `POST /api/patient/invite/accept`
+  - Input: `{ inviteToken, acceptingPatientId }`
+  - Behavior:
+    - Validate token and matching target, update `PatientConnection.status = CONFIRMED`, set `confirmedAt`.
+    - Notify requester via email + platform inbox.
+    - Return `{ connectionId, status: CONFIRMED }`.
+
+- `POST /api/patient/invite/decline`
+  - Input: `{ inviteToken, acceptingPatientId }`
+  - Behavior: set status = DECLINED, notify requester, log action.
+
+- `POST /api/patient/call/schedule`
+  - Input: `{ requesterPatientId, targetPatientId, scheduledAt (ISO), durationMinutes }`
+  - Behavior:
+    - Validate both users exist and connection is CONFIRMED.
+    - Create meeting/scheduled record (`PatientConnection.scheduledAt` or separate Meeting entity).
+    - Send email invites with accept/decline links.
+    - Return `{ meetingId }`.
+
+- `POST /api/patient/call/initiate`
+  - Input: `{ requesterPatientId, targetPatientId, mode: 'voice'|'video' }`
+  - Preconditions:
+    - `PatientConnection.status === CONFIRMED`
+    - Both users must have validated phone numbers for PSTN voice calls (E.164). If not configured, return 400 with explicit message.
+  - Behavior:
+    - Create `PatientCall` record with `isLive=false`.
+    - Use Twilio Programmable Voice to place outbound calls from `TWILIO_NUMBER` to both patients' phone numbers and connect them into a named conference.
+    - Set `statusCallback` to `/api/twilio/patient-call-webhook`.
+    - Mark `isLive=true` when conference connects.
+    - Return `{ patientCallId, conferenceName, status }`.
+  - Optional env flag: `ENABLE_PATIENT_VIDEO=true` for Twilio Video flow (default false).
+
+- `POST /api/twilio/patient-call-webhook`
+  - Purpose: Twilio status callbacks for patient calls.
+  - Behavior:
+    - Update `PatientCall` status on events.
+    - On completion: store duration, update endedAt, send administrative call summary email to both patients (no transcript by default).
+    - Log audit entries.
+
+- `GET /api/patient/available`
+  - Returns paginated other patients with connection status relative to caller.
+
+Security & Validation:
+- Role-based: endpoints accessible only by logged-in PATIENT users.
+- Case-insensitive email matching.
+- Invite tokens: UUID+HMAC, expire (default 7 days).
+- Phone numbers: validate E.164 format before PSTN calls.
+- Rate-limit call initiation per user and per hour (configurable).
+- Mask phone numbers in lists (show last 4 digits only).
+
+Testing:
+- Tests for invite creation, accept flow, call initiation validation, Twilio webhook handling.
+
+Constraints:
+- Do NOT allow patient→doctor calls/messaging.
+- Do NOT store patient→patient transcripts by default.
+- Do NOT expose raw phone numbers (mask in UI).
+- Do NOT allow unconnected patients to call each other.
+
+=======================
+DOCTOR → DOCTOR calls + LIVE AI SUMMARY (strict)
+=======================
+Implement live/near-real-time doctor→doctor summaries. Use Twilio Media Streams for live audio to STT → incremental summaries.
+
+Endpoints & Behavior (doctor calls):
+1. `POST /api/twilio/call`
+   - Input: `{ callerDoctorId, calleeDoctorId }`
+   - Behavior:
+     - Create `DoctorCall` record with isLive=false.
+     - Call Twilio to initiate outbound call using `TWILIO_NUMBER`, `url` -> `/api/twilio/voice`, `statusCallback` -> `/api/twilio/webhook`.
+     - Return `{ callSid, doctorCallId }`.
+
+2. `POST /api/twilio/voice`
+   - Return TwiML that either `<Dial>`s the other doctor or contains `<Start><Stream url="wss://<APP_HOST>/api/twilio/stream" /></Start>` for Media Streams.
+   - When stream starts, set `DoctorCall.isLive=true` and `startedAt`.
+
+3. `WS /api/twilio/stream` (preferred) and fallback `POST /api/twilio/stream`
+   - Authenticate Twilio connection.
+   - Receive audio frames or partial transcript events.
+   - If audio frames: forward to STT (Twilio or OpenAI Realtime).
+   - Assemble partial transcripts, persist `CallTranscriptChunk`, and POST incremental transcripts to `/api/ai/summarize-partial`.
+
+4. `POST /api/ai/summarize-partial`
+   - Input: `{ doctorCallId, partialTranscript, seq }`
+   - Sanitize (redact PHI beyond necessary).
+   - Call OpenAI to produce concise incremental bullets + action items.
+   - Persist `DoctorCall.liveSummary` and `summaryUpdatedAt`.
+   - Return `{ liveSummary }`.
+   - Rate-limit to ~10–20 seconds or token thresholds.
+
+5. `POST /api/twilio/webhook`
+   - On `CallStatus=completed`:
+     - Accept or fetch `transcriptText`.
+     - Set `DoctorCall.endedAt`, `isLive=false`.
+     - Save `transcriptText`.
+     - Call `POST /api/ai/summarize` with `{ doctorCallId, text: transcriptText }` to produce final summary.
+     - Persist `DoctorCall.summaryText`, email both doctors and store in platform inbox.
+   - Log audit and restrict access to doctors only.
+
+6. `POST /api/ai/summarize`
+   - Input: `{ doctorCallId, text }` (full transcript)
+   - Sanitize text, call OpenAI to produce final "Administrative/Consult Summary (non-diagnostic)" with bullets & action items.
+   - Persist summary and update timestamps; email doctors.
+
+Fallback:
+- If Media Streams unavailable: use Twilio recordings → post-call STT → final `api/ai/summarize`.
+
+DB updates:
+- DoctorCall: add `liveSummary`, `summaryText`, `summaryUpdatedAt`, `isLive`.
+- Add CallTranscriptChunk for streaming chunks.
+
+UI:
+- Doctor Call View shows Live Summary panel updating in near real-time; final summary persists after call.
+- Only involved doctors can view live/final summaries; patients cannot.
+
+Security & Compliance:
+- Validate Twilio auth for stream.
+- Sanitize PII/PHI before external STT/OpenAI.
+- `ENABLE_LIVE_SUMMARY=true|false` toggle in env.
+- Encrypt stored sensitive responses, provide audit logs.
+
+Tests:
+- Simulate Twilio webhook completed event and mock OpenAI to assert final summary persisted and emails queued.
+- Simulate `api/ai/summarize-partial` updates.
+
+=======================
+RED CAP PROMs & SURVEYS (exact)
+=======================
+- `lib/redcap.ts` with pushProm, createSurveyLink, fetchSurveyResponse, registerWebhookOrPoll.
+- `/api/redcap/promise` for PROM push.
+- `/api/redcap/survey/send` to send surveys (preop/postop).
+- `/api/redcap/webhook` or `/api/redcap/poll` to fetch/store responses.
+- SurveyRequest and SurveyResponse models in DB.
+- Doctor UI to send surveys, schedule sends, preview emails, and view responses (read-only). Patient receives REDCap-hosted link via email and status in dashboard. Only owning doctor(s) + admins view full responses.
+
+Security:
+- REDCap token in env; rotate in production; encrypt stored responses.
+
+=======================
+SECURITY & GENERAL NOTES
+=======================
+- All API routes must validate role and ownership.
+- Use bcrypt for password hashing.
+- QR & invite tokens: UUID+HMAC, TTL default 7 days.
+- Store all sensitive keys in env; do not commit secrets.
+- Sanitize and validate incoming text before sending to OpenAI/STT/Redcap.
+- Implement CORS, security headers, and rate limits for summarization and call endpoints.
+- Audit logs for invites, calls, survey sends, and summary accesses.
+
+=======================
+TESTS, SEED, README, .env.example
+=======================
+- Seed script `/scripts/seed.ts`: create 2 doctors, 3 patients, one LinkRecord linking a patient→doctor, sample PROMs and SurveyRequests.
+- Jest tests:
+  - `api/qr/create` returns token & dataURL and links to doctor metadata.
+  - `api/patient/invite` creates invite and sends email (mock SendGrid).
+  - `api/patient/invite/accept` confirms connection.
+  - `api/patient/call/initiate` validates connections and phone checks; mocks Twilio conference creation.
+  - `api/redcap/survey/send` returns survey link and stores SurveyRequest; simulate REDCap response and verify SurveyResponse persistence.
+  - Simulated `api/twilio/webhook` `CallStatus=completed` for doctor calls triggers `api/ai/summarize` (mock OpenAI) and persists `summaryText`.
+  - `api/ai/summarize-partial` updates `DoctorCall.liveSummary`.
+- README.md must document:
+  - How to run locally (migrate, seed, start)
+  - Env vars and `.env.example`
+  - How to configure Twilio number (Voice webhook → `/api/twilio/voice`, Status callback → `/api/twilio/webhook`)
+  - How to configure REDCap project & token
+  - How to enable Media Streams (ngrok instructions)
+  - Example curl commands for key endpoints (qr create, twilio call, redcap send, patient invite, patient call initiate)
+  - Where to drop real keys and how to toggle `TWILIO_USE_DEMO_WEBHOOKS=true`, `ENABLE_LIVE_SUMMARY`, `ENABLE_REDCAP`, `ENABLE_PATIENT_VIDEO`
+
+`.env.example` must include:
+DATABASE_URL=
+NEXTAUTH_SECRET=
+NEXTAUTH_URL=
+SENDGRID_API_KEY=
+TWILIO_NUMBER=+18456971736
+TWILIO_ACCOUNT_SID=
+TWILIO_AUTH_TOKEN=
+TWILIO_API_KEY=
+TWILIO_API_SECRET=
+REDCAP_API_URL=https://redcap.link/CarebridgeAI
+REDCAP_TOKEN=9DDEF52A7DA9827D74BB7FEF574632E9
+OPENAI_API_KEY=
+APP_HOST=
+ENABLE_LIVE_SUMMARY=true
+ENABLE_REDCAP=true
+ENABLE_PATIENT_VIDEO=false
+PATIENT_CALL_RATE_LIMIT_PER_HOUR=5
+PATIENT_INVITE_TTL_DAYS=7
+
+=======================
+NON-FEATURES (do NOT implement)
+=======================
+- No patient↔doctor chat, call, scheduling
+- No community feeds, forums, file sharing
+- No patient access to raw doctor call transcripts (patients only get administrative confirmations)
+- No appointment booking between doctor and patient
+
+=======================
+CODE QUALITY & FINAL INSTRUCTIONS
+=======================
+- Use TypeScript everywhere, strong typing.
+- Linting: ESLint + Prettier configs included.
+- Tests with Jest and test mocks for Twilio, SendGrid, OpenAI, REDCap.
+- Provide clear commit messages and a single `main` branch.
+- Stub external services with mock adapters; comment where production credentials go.
+- Keep UI minimal and follow SalesPatriot reference for look & feel and component patterns.
+- Do NOT add any features beyond this spec.
+
+OUTPUT EXPECTATION FOR REPLIT AI:
+- Create the repository scaffold and files exactly as specified above.
+- Implement endpoints with mocked external integrations.
+- Provide README, `.env.example`, seed script, tests, and `/app/styleguide.md` mapping SalesPatriot styles to Tailwind components.
+- Include REDCap survey send/poll/webhook logic and patient-dashboard features (invites, accept/decline, scheduling, patient→patient Twilio calls, call management, validation).
+- Implement doctor→doctor live summaries using Twilio Media Streams + `/api/ai/summarize-partial`.
+- Stop—do not implement extra features.
+
+End of prompt.
