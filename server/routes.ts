@@ -70,6 +70,10 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Trust proxy (required for Render and other hosting platforms)
+  // This allows Express to trust the X-Forwarded-* headers from the reverse proxy
+  app.set("trust proxy", 1);
+  
   // Session setup
   const sessionSecret = process.env.SESSION_SECRET || randomBytes(32).toString("hex");
   
@@ -79,9 +83,10 @@ export async function registerRoutes(
       resave: false,
       saveUninitialized: false,
       cookie: {
-        secure: process.env.NODE_ENV === "production",
+        secure: process.env.NODE_ENV === "production", // Requires HTTPS in production
         httpOnly: true,
         maxAge: 24 * 60 * 60 * 1000, // 24 hours
+        sameSite: process.env.NODE_ENV === "production" ? "lax" : "lax", // Use 'lax' for same-site requests
       },
     })
   );
