@@ -40,11 +40,15 @@ Render is the best choice for this application because:
    Render will automatically create a PostgreSQL database and set `DATABASE_URL`.
    You'll need to add these manually in the Render dashboard:
    - `SESSION_SECRET` - Generate a random string (Render can auto-generate)
+   - `APP_URL` - Your Render service URL (e.g., `https://teddybridge.onrender.com`) - **Important for Twilio**
    - `SENDGRID_API_KEY` - (Optional) Your SendGrid API key
    - `SENDGRID_FROM_EMAIL` - (Optional) Your verified SendGrid email
    - `TWILIO_ACCOUNT_SID` - (Optional) Your Twilio account SID
    - `TWILIO_AUTH_TOKEN` - (Optional) Your Twilio auth token
    - `TWILIO_PHONE_NUMBER` - (Optional) Your Twilio phone number
+   - `REDCAP_SURVEY_LINK` - (Optional) REDCap survey link
+   - `REDCAP_API_KEY` - (Optional) REDCap API key
+   - `REDCAP_API_URL` - (Optional) REDCap API URL
 
 5. **Deploy**
    - Click "Create Web Service"
@@ -128,11 +132,15 @@ Vercel is optimized for serverless functions and static sites. For this Express.
 | `NODE_ENV` | Yes | Set to `production` |
 | `PORT` | Auto | Render sets this automatically |
 | `SESSION_SECRET` | Yes | Random secret for session encryption |
+| `APP_URL` | Yes | Your Render service URL (e.g., `https://teddybridge.onrender.com`) - Required for Twilio |
 | `SENDGRID_API_KEY` | No | For email functionality |
 | `SENDGRID_FROM_EMAIL` | No | Verified sender email |
 | `TWILIO_ACCOUNT_SID` | No | For voice calling |
 | `TWILIO_AUTH_TOKEN` | No | Twilio authentication |
 | `TWILIO_PHONE_NUMBER` | No | Twilio phone number |
+| `REDCAP_SURVEY_LINK` | No | REDCap survey link |
+| `REDCAP_API_KEY` | No | REDCap API key |
+| `REDCAP_API_URL` | No | REDCap API URL |
 
 ## Support
 

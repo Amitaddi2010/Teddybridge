@@ -61,6 +61,11 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // Ensure database is initialized before registering routes
+  const { getDb } = await import("./db");
+  await getDb();
+  console.log("Database initialized, starting server...");
+  
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {

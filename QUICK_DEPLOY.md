@@ -1,10 +1,8 @@
 # Quick Deploy to Render
 
-## ⚠️ Important: Database Schema
+## ✅ Database Support
 
-Your current schema is configured for **SQLite** (local development). For Render deployment, you need **PostgreSQL**.
-
-## Two Options:
+Your application now supports both **SQLite** (local development) and **PostgreSQL** (production on Render). The database connection is automatically configured based on the `DATABASE_URL` environment variable.
 
 ### Option 1: Quick Deploy (Recommended for Testing)
 
@@ -30,7 +28,10 @@ Your current schema is configured for **SQLite** (local development). For Render
    - `DATABASE_URL` = (paste the Internal Database URL from step 5)
    - `NODE_ENV` = `production`
    - `SESSION_SECRET` = (click "Generate" or use a random string)
+   - `APP_URL` = `https://your-app-name.onrender.com` (replace with your actual Render URL - **Important for Twilio**)
    - `PORT` = `10000` (Render sets this automatically, but good to have)
+   - (Optional) `TWILIO_ACCOUNT_SID`, `TWILIO_AUTH_TOKEN`, `TWILIO_PHONE_NUMBER` for call functionality
+   - (Optional) `REDCAP_SURVEY_LINK`, `REDCAP_API_KEY`, `REDCAP_API_URL` for survey integration
 
 7. **Deploy**:
    - Click **Create Web Service**
@@ -44,21 +45,9 @@ Your current schema is configured for **SQLite** (local development). For Render
 
 9. **Done!** Your app should be live at `https://your-app-name.onrender.com`
 
-## ⚠️ Schema Conversion Needed
+## ✅ Schema Support
 
-**Current Issue**: Your schema (`shared/schema.ts`) is SQLite-specific. For PostgreSQL on Render, you have two options:
-
-### Option A: Convert Schema to PostgreSQL (Recommended)
-
-I can help you convert the schema. The main changes:
-- `sqliteTable` → `pgTable`
-- `integer` with `mode: "timestamp"` → `timestamp`
-- `integer` with `mode: "boolean"` → `boolean`
-- `text` with `mode: "json"` → `jsonb`
-
-### Option B: Use SQLite on Render (Not Recommended)
-
-Render doesn't support persistent file storage well, so SQLite files can be lost.
+Your schema (`shared/schema.ts`) is configured to work with both SQLite and PostgreSQL. The database connection logic in `server/db.ts` automatically detects the database type from the `DATABASE_URL` and uses the appropriate driver.
 
 ## Next Steps After Deployment
 

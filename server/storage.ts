@@ -1,5 +1,5 @@
 import { eq, and, or, desc, sql } from "drizzle-orm";
-import { db } from "./db";
+import { getDb } from "./db";
 import {
   users,
   patientProfiles,
@@ -95,31 +95,40 @@ export interface IStorage {
 }
 
 export class DatabaseStorage implements IStorage {
+  // Helper to get db (awaits if it's a promise)
+  private async db() {
+    return await getDb();
+  }
+
   // Users
   async getUser(id: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
+    const database = await this.db();
+    const [user] = await database.select().from(users).where(eq(users.id, id));
     return user;
   }
 
   async getUserByEmail(email: string): Promise<User | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.email, email));
+    const database = await this.db();
+    const [user] = await database.select().from(users).where(eq(users.email, email));
     return user;
   }
 
   async createUser(user: InsertUser): Promise<User> {
-    const [created] = await db.insert(users).values(user).returning();
+    const database = await this.db();
+    const [created] = await database.insert(users).values(user).returning();
     return created;
   }
 
   async getUserWithProfile(id: string): Promise<(User & { patientProfile?: PatientProfile | null; doctorProfile?: DoctorProfile | null }) | undefined> {
-    const [user] = await db.select().from(users).where(eq(users.id, id));
+    const database = await this.db();
+    const [user] = await database.select().from(users).where(eq(users.id, id));
     if (!user) return undefined;
 
     if (user.role === "PATIENT") {
-      const [profile] = await db.select().from(patientProfiles).where(eq(patientProfiles.userId, id));
+      const [profile] = await database.select().from(patientProfiles).where(eq(patientProfiles.userId, id));
       return { ...user, patientProfile: profile || null, doctorProfile: null };
     } else {
-      const [profile] = await db.select().from(doctorProfiles).where(eq(doctorProfiles.userId, id));
+      const [profile] = await database.select().from(doctorProfiles).where(eq(doctorProfiles.userId, id));
       return { ...user, doctorProfile: profile || null, patientProfile: null };
     }
   }
@@ -135,12 +144,14 @@ export class DatabaseStorage implements IStorage {
         procedure: typeof profile.demographics.procedure === 'string' ? profile.demographics.procedure : undefined,
       } : null,
     };
-    const [created] = await db.insert(patientProfiles).values(profileToInsert).returning();
+    const database = await this.db();
+    const [created] = await database.insert(patientProfiles).values(profileToInsert).returning();
     return created;
   }
 
   async getPatientProfile(userId: string): Promise<PatientProfile | undefined> {
-    const [profile] = await db.select().from(patientProfiles).where(eq(patientProfiles.userId, userId));
+    const database = await this.db();
+    const [profile] = await database.select().from(patientProfiles).where(eq(patientProfiles.userId, userId));
     return profile;
   }
 
@@ -190,7 +201,8 @@ export class DatabaseStorage implements IStorage {
       return existingProfile;
     }
     
-    const [updated] = await db
+    const database = await this.db();
+    const [updated] = await database
       .update(patientProfiles)
       .set(profileToUpdate)
       .where(eq(patientProfiles.userId, userId))
@@ -200,12 +212,14 @@ export class DatabaseStorage implements IStorage {
 
   // Doctor Profiles
   async createDoctorProfile(profile: InsertDoctorProfile): Promise<DoctorProfile> {
-    const [created] = await db.insert(doctorProfiles).values(profile).returning();
+    const database = await this.db();
+    const [created] = await database.insert(doctorProfiles).values(profile).returning();
     return created;
   }
 
   async getDoctorProfile(userId: string): Promise<DoctorProfile | undefined> {
-    const [profile] = await db.select().from(doctorProfiles).where(eq(doctorProfiles.userId, userId));
+    const database = await this.db();
+    const [profile] = await database.select().from(doctorProfiles).where(eq(doctorProfiles.userId, userId));
     return profile;
   }
 
@@ -243,7 +257,8 @@ export class DatabaseStorage implements IStorage {
       return existingProfile;
     }
     
-    const [updated] = await db
+    const database = await this.db();
+    const [updated] = await database
       .update(doctorProfiles)
       .set(profileToUpdate)
       .where(eq(doctorProfiles.userId, userId))
@@ -252,7 +267,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   async updateUser(id: string, updates: Partial<InsertUser>): Promise<User | undefined> {
-    const [updated] = await db
+    const database = await this.db();
+    const [updated] = await database
       .update(users)
       .set(updates)
       .where(eq(users.id, id))
@@ -262,27 +278,32 @@ export class DatabaseStorage implements IStorage {
 
   // Patient Connections
   async createPatientConnection(connection: InsertPatientConnection): Promise<PatientConnection> {
-    const [created] = await db.insert(patientConnections).values(connection).returning();
+    const database = await this.db();
+    const [created] = await database.insert(patientConnections).values(connection).returning();
     return created;
   }
 
   async getPatientConnection(id: string): Promise<PatientConnection | undefined> {
-    const [connection] = await db.select().from(patientConnections).where(eq(patientConnections.id, id));
+    const database = await this.db();
+    const [connection] = await database.select().from(patientConnections).where(eq(patientConnections.id, id));
     return connection;
   }
 
   async getPatientConnectionByToken(token: string): Promise<PatientConnection | undefined> {
-    const [connection] = await db.select().from(patientConnections).where(eq(patientConnections.inviteToken, token));
+    const database = await this.db();
+    const [connection] = await database.select().from(patientConnections).where(eq(patientConnections.inviteToken, token));
     return connection;
   }
 
   async updatePatientConnection(id: string, updates: Partial<PatientConnection>): Promise<PatientConnection | undefined> {
-    const [updated] = await db.update(patientConnections).set(updates).where(eq(patientConnections.id, id)).returning();
+    const database = await this.db();
+    const [updated] = await database.update(patientConnections).set(updates).where(eq(patientConnections.id, id)).returning();
     return updated;
   }
 
   async getConnectionsForPatient(patientId: string): Promise<PatientConnection[]> {
-    const connections = await db.select().from(patientConnections)
+    const database = await this.db();
+    const connections = await database.select().from(patientConnections)
       .where(or(
         eq(patientConnections.requesterPatientId, patientId),
         eq(patientConnections.targetPatientId, patientId)
@@ -291,9 +312,9 @@ export class DatabaseStorage implements IStorage {
     
     const result = [];
     for (const conn of connections) {
-      const [requester] = await db.select().from(users).where(eq(users.id, conn.requesterPatientId));
+      const [requester] = await database.select().from(users).where(eq(users.id, conn.requesterPatientId));
       const target = conn.targetPatientId 
-        ? (await db.select().from(users).where(eq(users.id, conn.targetPatientId)))[0]
+        ? (await database.select().from(users).where(eq(users.id, conn.targetPatientId)))[0]
         : null;
       result.push({ ...conn, requester, target });
     }
@@ -301,13 +322,14 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getAvailablePatients(excludeUserId: string): Promise<(User & { patientProfile?: PatientProfile | null })[]> {
-    const patients = await db.select().from(users).where(
+    const database = await this.db();
+    const patients = await database.select().from(users).where(
       and(eq(users.role, "PATIENT"), sql`${users.id} != ${excludeUserId}`)
     );
     
     const result = [];
     for (const patient of patients) {
-      const [profile] = await db.select().from(patientProfiles).where(eq(patientProfiles.userId, patient.id));
+      const [profile] = await database.select().from(patientProfiles).where(eq(patientProfiles.userId, patient.id));
       result.push({ ...patient, patientProfile: profile || null });
     }
     return result;
@@ -315,57 +337,66 @@ export class DatabaseStorage implements IStorage {
 
   // Survey Requests
   async createSurveyRequest(request: InsertSurveyRequest): Promise<SurveyRequest> {
-    const [created] = await db.insert(surveyRequests).values(request).returning();
+    const database = await this.db();
+    const [created] = await database.insert(surveyRequests).values(request).returning();
     return created;
   }
 
   async getSurveyRequest(id: string): Promise<SurveyRequest | undefined> {
-    const [request] = await db.select().from(surveyRequests).where(eq(surveyRequests.id, id));
+    const database = await this.db();
+    const [request] = await database.select().from(surveyRequests).where(eq(surveyRequests.id, id));
     return request;
   }
 
   async updateSurveyRequest(id: string, updates: Partial<SurveyRequest>): Promise<SurveyRequest | undefined> {
-    const [updated] = await db.update(surveyRequests).set(updates).where(eq(surveyRequests.id, id)).returning();
+    const database = await this.db();
+    const [updated] = await database.update(surveyRequests).set(updates).where(eq(surveyRequests.id, id)).returning();
     return updated;
   }
 
   async getSurveysForDoctor(doctorId: string): Promise<(SurveyRequest & { patient?: User | null })[]> {
-    const surveys = await db.select().from(surveyRequests)
+    const database = await this.db();
+    const surveys = await database.select().from(surveyRequests)
       .where(eq(surveyRequests.doctorId, doctorId))
       .orderBy(desc(surveyRequests.createdAt));
     
     const result = [];
     for (const survey of surveys) {
-      const [patient] = await db.select().from(users).where(eq(users.id, survey.patientId));
+      const [patient] = await database.select().from(users).where(eq(users.id, survey.patientId));
       result.push({ ...survey, patient });
     }
     return result;
   }
 
   async getSurveysForPatient(patientId: string): Promise<SurveyRequest[]> {
-    return db.select().from(surveyRequests)
+    const database = await this.db();
+    return database.select().from(surveyRequests)
       .where(eq(surveyRequests.patientId, patientId))
       .orderBy(desc(surveyRequests.createdAt));
   }
 
   // Doctor Calls
   async createDoctorCall(call: InsertDoctorCall): Promise<DoctorCall> {
-    const [created] = await db.insert(doctorCalls).values(call).returning();
+    const database = await this.db();
+    const [created] = await database.insert(doctorCalls).values(call).returning();
     return created;
   }
 
   async getDoctorCall(id: string): Promise<DoctorCall | undefined> {
-    const [call] = await db.select().from(doctorCalls).where(eq(doctorCalls.id, id));
+    const database = await this.db();
+    const [call] = await database.select().from(doctorCalls).where(eq(doctorCalls.id, id));
     return call;
   }
 
   async updateDoctorCall(id: string, updates: Partial<DoctorCall>): Promise<DoctorCall | undefined> {
-    const [updated] = await db.update(doctorCalls).set(updates).where(eq(doctorCalls.id, id)).returning();
+    const database = await this.db();
+    const [updated] = await database.update(doctorCalls).set(updates).where(eq(doctorCalls.id, id)).returning();
     return updated;
   }
 
   async getCallsForDoctor(doctorId: string): Promise<DoctorCall[]> {
-    return db.select().from(doctorCalls)
+    const database = await this.db();
+    return database.select().from(doctorCalls)
       .where(or(
         eq(doctorCalls.callerDoctorId, doctorId),
         eq(doctorCalls.calleeDoctorId, doctorId)
@@ -382,45 +413,53 @@ export class DatabaseStorage implements IStorage {
         ? (Array.isArray(call.twilioCallSids) ? call.twilioCallSids.filter((s): s is string => typeof s === 'string') : null)
         : undefined,
     };
-    const [created] = await db.insert(patientCalls).values(callToInsert).returning();
+    const database = await this.db();
+    const [created] = await database.insert(patientCalls).values(callToInsert).returning();
     return created;
   }
 
   async getPatientCall(id: string): Promise<PatientCall | undefined> {
-    const [call] = await db.select().from(patientCalls).where(eq(patientCalls.id, id));
+    const database = await this.db();
+    const [call] = await database.select().from(patientCalls).where(eq(patientCalls.id, id));
     return call;
   }
 
   async updatePatientCall(id: string, updates: Partial<PatientCall>): Promise<PatientCall | undefined> {
-    const [updated] = await db.update(patientCalls).set(updates).where(eq(patientCalls.id, id)).returning();
+    const database = await this.db();
+    const [updated] = await database.update(patientCalls).set(updates).where(eq(patientCalls.id, id)).returning();
     return updated;
   }
 
   // Link Records
   async createLinkRecord(record: InsertLinkRecord): Promise<LinkRecord> {
-    const [created] = await db.insert(linkRecords).values(record).returning();
+    const database = await this.db();
+    const [created] = await database.insert(linkRecords).values(record).returning();
     return created;
   }
 
   async getLinkRecordByToken(token: string): Promise<(LinkRecord & { doctor?: (User & { doctorProfile?: DoctorProfile | null }) | null }) | undefined> {
-    const [record] = await db.select().from(linkRecords).where(eq(linkRecords.qrToken, token));
+    const database = await this.db();
+    const [record] = await database.select().from(linkRecords).where(eq(linkRecords.qrToken, token));
     if (!record) return undefined;
     
-    const [doctor] = await db.select().from(users).where(eq(users.id, record.doctorId));
-    const [doctorProfile] = await db.select().from(doctorProfiles).where(eq(doctorProfiles.userId, record.doctorId));
+    const [doctor] = await database.select().from(users).where(eq(users.id, record.doctorId));
+    const [doctorProfile] = await database.select().from(doctorProfiles).where(eq(doctorProfiles.userId, record.doctorId));
     return { ...record, doctor: doctor ? { ...doctor, doctorProfile: doctorProfile || null } : null };
   }
 
   async getLinkRecordsForDoctor(doctorId: string): Promise<LinkRecord[]> {
-    return db.select().from(linkRecords).where(eq(linkRecords.doctorId, doctorId));
+    const database = await this.db();
+    return database.select().from(linkRecords).where(eq(linkRecords.doctorId, doctorId));
   }
 
   async getLinkRecordsForPatient(patientId: string): Promise<LinkRecord[]> {
-    return db.select().from(linkRecords).where(eq(linkRecords.patientId, patientId));
+    const database = await this.db();
+    return database.select().from(linkRecords).where(eq(linkRecords.patientId, patientId));
   }
 
   async isPatientLinkedToDoctor(patientId: string, doctorId: string): Promise<boolean> {
-    const [record] = await db.select().from(linkRecords).where(
+    const database = await this.db();
+    const [record] = await database.select().from(linkRecords).where(
       and(eq(linkRecords.patientId, patientId), eq(linkRecords.doctorId, doctorId))
     );
     return !!record;
@@ -428,30 +467,33 @@ export class DatabaseStorage implements IStorage {
 
   // Audit Logs
   async createAuditLog(log: InsertAuditLog): Promise<AuditLog> {
-    const [created] = await db.insert(auditLogs).values(log).returning();
+    const database = await this.db();
+    const [created] = await database.insert(auditLogs).values(log).returning();
     return created;
   }
 
   // Doctors
   async getAvailableDoctors(): Promise<(User & { doctorProfile?: DoctorProfile | null })[]> {
-    const doctors = await db.select().from(users).where(eq(users.role, "DOCTOR"));
+    const database = await this.db();
+    const doctors = await database.select().from(users).where(eq(users.role, "DOCTOR"));
     
     const result = [];
     for (const doctor of doctors) {
-      const [profile] = await db.select().from(doctorProfiles).where(eq(doctorProfiles.userId, doctor.id));
+      const [profile] = await database.select().from(doctorProfiles).where(eq(doctorProfiles.userId, doctor.id));
       result.push({ ...doctor, doctorProfile: profile || null });
     }
     return result;
   }
 
   async getDoctorByQrToken(token: string): Promise<(User & { doctorProfile?: DoctorProfile | null }) | undefined> {
-    const [record] = await db.select().from(linkRecords).where(eq(linkRecords.qrToken, token));
+    const database = await this.db();
+    const [record] = await database.select().from(linkRecords).where(eq(linkRecords.qrToken, token));
     if (!record) return undefined;
     
-    const [doctor] = await db.select().from(users).where(eq(users.id, record.doctorId));
+    const [doctor] = await database.select().from(users).where(eq(users.id, record.doctorId));
     if (!doctor) return undefined;
     
-    const [profile] = await db.select().from(doctorProfiles).where(eq(doctorProfiles.userId, doctor.id));
+    const [profile] = await database.select().from(doctorProfiles).where(eq(doctorProfiles.userId, doctor.id));
     return { ...doctor, doctorProfile: profile || null };
   }
 }

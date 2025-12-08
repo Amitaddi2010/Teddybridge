@@ -16,6 +16,8 @@ services:
           property: connectionString
       - key: SESSION_SECRET
         generateValue: true
+      - key: APP_URL
+        sync: false  # Will be set to the service URL after deployment
 
 databases:
   - name: teddybridge-db
