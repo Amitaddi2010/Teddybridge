@@ -2,9 +2,20 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarTrigger,
+} from "@/components/ui/sidebar";
 import { Logo } from "@/components/logo";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { PatientCard } from "@/components/patient-card";
@@ -18,6 +29,7 @@ import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { 
+  LayoutDashboard,
   Users, 
   Calendar, 
   UserPlus, 
@@ -30,7 +42,9 @@ import {
   ChevronDown,
   ChevronUp,
   User as UserIcon,
-  Edit
+  Edit,
+  Settings,
+  Loader2
 } from "lucide-react";
 import type { User, PatientProfile, PatientConnection, SurveyRequest } from "@shared/schema";
 
@@ -43,12 +57,14 @@ type ConnectionWithUsers = PatientConnection & {
 export default function PatientDashboard() {
   const { user, logout } = useAuth();
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState("dashboard");
   const [searchQuery, setSearchQuery] = useState("");
   const [inviteDialogOpen, setInviteDialogOpen] = useState(false);
   const [scheduleDialogOpen, setScheduleDialogOpen] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<PatientWithProfile | null>(null);
   const [activeCall, setActiveCall] = useState<{ participantName: string } | null>(null);
   const [expandedSurveys, setExpandedSurveys] = useState<Set<string>>(new Set());
+  const [loadingSurveyIframes, setLoadingSurveyIframes] = useState<Set<string>>(new Set());
   const [editProfileDialogOpen, setEditProfileDialogOpen] = useState(false);
 
   const { data: patients, isLoading: loadingPatients } = useQuery<PatientWithProfile[]>({
@@ -229,6 +245,16 @@ export default function PatientDashboard() {
     );
   };
 
+  const navItems = [
+    { title: "Dashboard", icon: LayoutDashboard, id: "dashboard" },
+    { title: "Peers", icon: Users, id: "peers" },
+    { title: "Connections", icon: LinkIcon, id: "connections" },
+    { title: "Doctors", icon: LinkIcon, id: "doctors" },
+    { title: "Surveys", icon: ClipboardCheck, id: "surveys" },
+    { title: "Meetings", icon: Calendar, id: "meetings" },
+    { title: "Settings", icon: Settings, id: "settings" },
+  ];
+
   if (activeCall) {
     return (
       <CallView
@@ -239,114 +265,166 @@ export default function PatientDashboard() {
     );
   }
 
+  const sidebarStyle = {
+    "--sidebar-width": "16rem",
+    "--sidebar-width-icon": "3.5rem",
+  } as React.CSSProperties;
+
   return (
-    <div className="min-h-screen bg-background">
-      <header className="sticky top-0 z-50 w-full border-b bg-background/95 backdrop-blur">
-        <div className="max-w-7xl mx-auto px-6 flex h-16 items-center justify-between gap-4">
+    <SidebarProvider style={sidebarStyle}>
+      <div className="flex h-screen w-full">
+        <Sidebar>
+          <SidebarContent>
+            <SidebarGroup>
+              <div className="p-4">
           <Logo size="md" />
-          
-          <nav className="hidden md:flex items-center gap-1">
-            <Button variant="ghost" size="sm" className="gap-2">
-              <Users className="h-4 w-4" />
-              Connections
-            </Button>
-            <Button variant="ghost" size="sm" className="gap-2">
-              <Calendar className="h-4 w-4" />
-              Meetings
-            </Button>
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              className="gap-2"
-              onClick={() => {
-                const tabsList = document.querySelector('[role="tablist"]');
-                const profileTab = document.querySelector('[data-testid="tab-profile"]') as HTMLElement;
-                if (profileTab) {
-                  profileTab.click();
-                  window.scrollTo({ top: 0, behavior: 'smooth' });
-                }
-              }}
-            >
-              <UserIcon className="h-4 w-4" />
-              My Profile
-            </Button>
-          </nav>
-          
-          <div className="flex items-center gap-2">
+              </div>
+            </SidebarGroup>
+            
+            <SidebarGroup>
+              <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {navItems.map((item) => (
+                    <SidebarMenuItem key={item.id}>
+                      <SidebarMenuButton
+                        onClick={() => setActiveTab(item.id)}
+                        isActive={activeTab === item.id}
+                        data-testid={`nav-${item.id}`}
+                      >
+                        <item.icon className="h-4 w-4" />
+                        <span>{item.title}</span>
+                        {item.id === "connections" && incomingRequests.length > 0 && (
+                          <span className="ml-auto bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
+                            {incomingRequests.length}
+                          </span>
+                        )}
+                        {item.id === "doctors" && linkedDoctors && linkedDoctors.length > 0 && (
+                          <span className="ml-auto bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
+                            {linkedDoctors.length}
+                          </span>
+                        )}
+                        {item.id === "surveys" && surveys && surveys.filter(s => s.status === "SENT" || s.status === "PENDING").length > 0 && (
+                          <span className="ml-auto bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
+                            {surveys.filter(s => s.status === "SENT" || s.status === "PENDING").length}
+                          </span>
+                        )}
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+
+            <SidebarGroup className="mt-auto">
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  <SidebarMenuItem>
+                    <SidebarMenuButton onClick={logout} data-testid="button-logout">
+                      <LogOut className="h-4 w-4" />
+                      <span>Log Out</span>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          </SidebarContent>
+        </Sidebar>
+
+        <div className="flex flex-col flex-1">
+          <header className="flex items-center justify-between gap-4 p-4 border-b bg-background">
+            <div className="flex items-center gap-4">
+              <SidebarTrigger data-testid="button-sidebar-toggle" />
+              <h1 className="text-xl font-semibold" data-testid="text-page-title">
+                {navItems.find(i => i.id === activeTab)?.title || "Dashboard"}
+              </h1>
+            </div>
             <ThemeToggle />
-            <Button 
-              variant="ghost" 
-              size="icon" 
-              onClick={logout}
-              data-testid="button-logout"
-            >
-              <LogOut className="h-5 w-5" />
-            </Button>
-          </div>
-        </div>
       </header>
 
-      <main className="max-w-7xl mx-auto px-6 py-8">
-        <div className="flex items-center justify-between gap-4 mb-8">
+          <main className="flex-1 overflow-auto p-6 bg-background">
+
+            {activeTab === "dashboard" && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between gap-4">
           <div>
-            <h1 className="text-3xl font-bold text-foreground" data-testid="text-welcome">
-              Welcome, {user?.name?.split(" ")[0]}!
-            </h1>
-            <p className="text-muted-foreground mt-1">
+                    <h2 className="text-2xl font-bold">Welcome, {user?.name?.split(" ")[0]}!</h2>
+                    <p className="text-muted-foreground">
               Connect with peers on your healthcare journey
             </p>
           </div>
-          
           <Button onClick={() => setInviteDialogOpen(true)} data-testid="button-invite-peer">
             <UserPlus className="h-4 w-4 mr-2" />
             Invite Peer
           </Button>
         </div>
 
-        <Tabs defaultValue="peers" className="space-y-6">
-          <TabsList>
-            <TabsTrigger value="peers" className="gap-2" data-testid="tab-peers">
-              <Users className="h-4 w-4" />
-              Available Peers
-            </TabsTrigger>
-            <TabsTrigger value="connections" className="gap-2" data-testid="tab-connections">
-              <LinkIcon className="h-4 w-4" />
-              My Connections
-              {(incomingRequests.length > 0) && (
-                <span className="ml-1 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
-                  {incomingRequests.length}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="doctors" className="gap-2" data-testid="tab-doctors">
-              <LinkIcon className="h-4 w-4" />
-              My Doctors
-              {(linkedDoctors && linkedDoctors.length > 0) && (
-                <span className="ml-1 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
-                  {linkedDoctors.length}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="surveys" className="gap-2" data-testid="tab-surveys">
-              <ClipboardCheck className="h-4 w-4" />
-              Surveys
-              {(surveys && surveys.filter(s => s.status === "SENT" || s.status === "PENDING").length > 0) && (
-                <span className="ml-1 bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
-                  {surveys.filter(s => s.status === "SENT" || s.status === "PENDING").length}
-                </span>
-              )}
-            </TabsTrigger>
-            <TabsTrigger value="meetings" className="gap-2" data-testid="tab-meetings">
-              <Calendar className="h-4 w-4" />
-              Meetings
-            </TabsTrigger>
-            <TabsTrigger value="profile" className="gap-2" data-testid="tab-profile">
-              <UserIcon className="h-4 w-4" />
-              My Profile
-            </TabsTrigger>
-          </TabsList>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Connections</p>
+                          <p className="text-2xl font-bold">{confirmedConnections.length}</p>
+                        </div>
+                        <Users className="h-8 w-8 text-primary opacity-50" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Linked Doctors</p>
+                          <p className="text-2xl font-bold">{linkedDoctors?.length || 0}</p>
+                        </div>
+                        <LinkIcon className="h-8 w-8 text-primary opacity-50" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Pending Surveys</p>
+                          <p className="text-2xl font-bold">
+                            {surveys?.filter(s => s.status === "SENT" || s.status === "PENDING").length || 0}
+                          </p>
+                        </div>
+                        <ClipboardCheck className="h-8 w-8 text-primary opacity-50" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                  <Card>
+                    <CardContent className="p-4">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <p className="text-sm text-muted-foreground">Scheduled Meetings</p>
+                          <p className="text-2xl font-bold">{scheduledMeetings.length}</p>
+                        </div>
+                        <Calendar className="h-8 w-8 text-primary opacity-50" />
+                      </div>
+                    </CardContent>
+                  </Card>
+                </div>
+              </div>
+            )}
 
-          <TabsContent value="peers" className="space-y-6">
+            {activeTab === "peers" && (
+              <div className="space-y-6">
+                <div className="flex items-center justify-between gap-4">
+                  <div>
+                    <h2 className="text-2xl font-bold">Available Peers</h2>
+                    <p className="text-muted-foreground">
+                      Find and connect with other patients
+                    </p>
+                  </div>
+                  <Button onClick={() => setInviteDialogOpen(true)} data-testid="button-invite-peer">
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Invite Peer
+                  </Button>
+                </div>
+                
             <div className="relative max-w-md">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
@@ -403,9 +481,18 @@ export default function PatientDashboard() {
                 ))}
               </div>
             )}
-          </TabsContent>
+              </div>
+            )}
 
-          <TabsContent value="connections" className="space-y-6">
+            {activeTab === "connections" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold">My Connections</h2>
+                  <p className="text-muted-foreground">
+                    Manage your peer connections and requests
+                  </p>
+                </div>
+                
             {incomingRequests.length > 0 && (
               <div className="space-y-4">
                 <h3 className="font-semibold text-lg">Incoming Requests</h3>
@@ -500,16 +587,17 @@ export default function PatientDashboard() {
                 </div>
               )}
             </div>
-          </TabsContent>
-
-          <TabsContent value="doctors" className="space-y-6">
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold text-lg">Linked Doctors</h3>
-                <p className="text-sm text-muted-foreground">
-                  Doctors you've linked with via QR code
-                </p>
               </div>
+            )}
+
+            {activeTab === "doctors" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold">My Doctors</h2>
+                  <p className="text-muted-foreground">
+                    Doctors you've linked with via QR code
+                  </p>
+                </div>
               {loadingLinkedDoctors ? (
                 <div className="grid md:grid-cols-2 gap-4">
                   {[1, 2].map(i => (
@@ -562,16 +650,16 @@ export default function PatientDashboard() {
                 </div>
               )}
             </div>
-          </TabsContent>
+            )}
 
-          <TabsContent value="surveys" className="space-y-6">
-            <div className="space-y-4">
-              <div>
-                <h3 className="font-semibold text-lg">Health Surveys</h3>
-                <p className="text-sm text-muted-foreground">
-                  Complete surveys sent by your doctors to track your health outcomes
-                </p>
-              </div>
+            {activeTab === "surveys" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold">Surveys</h2>
+                  <p className="text-muted-foreground">
+                    Complete surveys sent by your doctors to track your health outcomes
+                  </p>
+                </div>
               {loadingSurveys ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map(i => (
@@ -638,8 +726,16 @@ export default function PatientDashboard() {
                                       const newExpanded = new Set(expandedSurveys);
                                       if (isExpanded) {
                                         newExpanded.delete(survey.id);
+                                        // Remove from loading when hiding
+                                        const newLoading = new Set(loadingSurveyIframes);
+                                        newLoading.delete(survey.id);
+                                        setLoadingSurveyIframes(newLoading);
                                       } else {
                                         newExpanded.add(survey.id);
+                                        // Add to loading when showing
+                                        const newLoading = new Set(loadingSurveyIframes);
+                                        newLoading.add(survey.id);
+                                        setLoadingSurveyIframes(newLoading);
                                       }
                                       setExpandedSurveys(newExpanded);
                                     }}
@@ -681,14 +777,35 @@ export default function PatientDashboard() {
                                   Fill out all required fields and submit when finished.
                                 </p>
                               </div>
-                              <div className="w-full border rounded-lg overflow-hidden" style={{ minHeight: '600px' }}>
+                              <div className="w-full border rounded-lg overflow-hidden relative" style={{ minHeight: '600px' }}>
+                                {loadingSurveyIframes.has(survey.id) && (
+                                  <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-sm z-10">
+                                    <div className="flex flex-col items-center gap-3">
+                                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                                      <p className="text-sm text-muted-foreground font-medium">Loading survey...</p>
+                                      <p className="text-xs text-muted-foreground">Please wait while we load the survey form</p>
+                                    </div>
+                                  </div>
+                                )}
                                 <iframe
                                   src={surveyUrl}
                                   className="w-full h-full"
-                                  style={{ minHeight: '600px', border: 'none' }}
+                                  style={{ minHeight: '600px', border: 'none', opacity: loadingSurveyIframes.has(survey.id) ? 0 : 1, transition: 'opacity 0.3s ease-in-out' }}
                                   title={`${survey.formName || 'Health Survey'} - REDCap`}
                                   allow="fullscreen"
                                   data-testid={`iframe-survey-${survey.id}`}
+                                  onLoad={() => {
+                                    // Remove from loading when iframe loads
+                                    const newLoading = new Set(loadingSurveyIframes);
+                                    newLoading.delete(survey.id);
+                                    setLoadingSurveyIframes(newLoading);
+                                  }}
+                                  onError={() => {
+                                    // Remove from loading on error too
+                                    const newLoading = new Set(loadingSurveyIframes);
+                                    newLoading.delete(survey.id);
+                                    setLoadingSurveyIframes(newLoading);
+                                  }}
                                 />
                               </div>
                             </div>
@@ -700,11 +817,17 @@ export default function PatientDashboard() {
                 </div>
               )}
             </div>
-          </TabsContent>
+            )}
 
-          <TabsContent value="meetings" className="space-y-6">
-            <div className="space-y-4">
-              <h3 className="font-semibold text-lg">Scheduled Meetings</h3>
+            {activeTab === "meetings" && (
+              <div className="space-y-6">
+                <div>
+                  <h2 className="text-2xl font-bold">Scheduled Meetings</h2>
+                  <p className="text-muted-foreground">
+                    Your upcoming peer-to-peer calls
+                  </p>
+                </div>
+                
               {scheduledMeetings.length === 0 ? (
                 <Card>
                   <CardContent className="py-12 text-center">
@@ -735,130 +858,99 @@ export default function PatientDashboard() {
                 </div>
               )}
             </div>
-          </TabsContent>
+            )}
 
-          <TabsContent value="profile" className="space-y-6">
-            <div className="space-y-6">
-              <div className="flex items-center justify-between">
+            {activeTab === "settings" && (
+              <div className="space-y-6">
                 <div>
-                  <h3 className="font-semibold text-lg mb-2">My Profile</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Your personal information and health profile
+                  <h2 className="text-2xl font-bold">Settings</h2>
+                  <p className="text-muted-foreground">
+                    Manage your account and preferences
                   </p>
                 </div>
-                <Button
-                  onClick={() => setEditProfileDialogOpen(true)}
-                  variant="outline"
-                  data-testid="button-edit-profile"
-                >
-                  <Edit className="h-4 w-4 mr-2" />
-                  Edit Profile
-                </Button>
-              </div>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Personal Information</CardTitle>
-                  <CardDescription>
-                    Your account and contact details
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Name</label>
-                      <p className="text-sm font-medium mt-1">{user?.name || "Not set"}</p>
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center justify-between">
+                      <CardTitle>Profile Information</CardTitle>
+                      <Button
+                        onClick={() => setEditProfileDialogOpen(true)}
+                        variant="outline"
+                        size="sm"
+                        data-testid="button-edit-profile"
+                      >
+                        <Edit className="h-4 w-4 mr-2" />
+                        Edit Profile
+                      </Button>
                     </div>
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Email</label>
-                      <p className="text-sm font-medium mt-1">{user?.email || "Not set"}</p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Phone Number</label>
-                      <p className="text-sm font-medium mt-1">
-                        {user?.patientProfile?.phoneNumber || "Not provided"}
-                      </p>
-                    </div>
-                    <div>
-                      <label className="text-sm font-medium text-muted-foreground">Account Type</label>
-                      <p className="text-sm font-medium mt-1 capitalize">{user?.role?.toLowerCase() || "Patient"}</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card>
-                <CardHeader>
-                  <CardTitle>Health Information</CardTitle>
-                  <CardDescription>
-                    Your medical and demographic information
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  {user?.patientProfile?.demographics ? (
+                  </CardHeader>
+                  <CardContent className="space-y-4">
                     <div className="grid gap-4 md:grid-cols-2">
-                      {user.patientProfile.demographics.age && (
-                        <div>
-                          <label className="text-sm font-medium text-muted-foreground">Age</label>
-                          <p className="text-sm font-medium mt-1">{user.patientProfile.demographics.age} years</p>
-                        </div>
-                      )}
-                      {user.patientProfile.demographics.gender && (
-                        <div>
-                          <label className="text-sm font-medium text-muted-foreground">Gender</label>
-                          <p className="text-sm font-medium mt-1">{user.patientProfile.demographics.gender}</p>
-                        </div>
-                      )}
-                      {user.patientProfile.demographics.procedure && (
-                        <div className="md:col-span-2">
-                          <label className="text-sm font-medium text-muted-foreground">Procedure</label>
-                          <p className="text-sm font-medium mt-1">{user.patientProfile.demographics.procedure}</p>
-                        </div>
-                      )}
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Name</p>
+                        <p className="font-medium">{user?.name || "Not set"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Email</p>
+                        <p className="font-medium">{user?.email || "Not set"}</p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Phone Number</p>
+                        <p className="font-medium">
+                          {user?.patientProfile?.phoneNumber || "Not provided"}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-sm font-medium text-muted-foreground">Account Type</p>
+                        <p className="font-medium capitalize">{user?.role?.toLowerCase() || "Patient"}</p>
+                      </div>
                     </div>
-                  ) : (
-                    <div className="py-8 text-center text-muted-foreground">
-                      <p>No health information available</p>
-                      <p className="text-xs mt-2">Your doctor may add this information during your consultation</p>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
+                  </CardContent>
+                </Card>
 
-              <Card>
-                <CardHeader>
-                  <CardTitle>Account Statistics</CardTitle>
-                  <CardDescription>
-                    Your activity and connections summary
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid gap-4 md:grid-cols-3">
-                    <div className="text-center p-4 rounded-lg border">
-                      <p className="text-2xl font-bold text-primary">
-                        {connections?.filter(c => c.status === "CONFIRMED").length || 0}
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-1">Active Connections</p>
-                    </div>
-                    <div className="text-center p-4 rounded-lg border">
-                      <p className="text-2xl font-bold text-primary">
-                        {linkedDoctors?.length || 0}
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-1">Linked Doctors</p>
-                    </div>
-                    <div className="text-center p-4 rounded-lg border">
-                      <p className="text-2xl font-bold text-primary">
-                        {surveys?.filter(s => s.status === "COMPLETED").length || 0}
-                      </p>
-                      <p className="text-sm text-muted-foreground mt-1">Completed Surveys</p>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          </TabsContent>
-        </Tabs>
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Health Information</CardTitle>
+                    <CardDescription>
+                      Your medical and demographic information
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+
+                    {user?.patientProfile?.demographics ? (
+                      <div className="grid gap-4 md:grid-cols-2">
+                        {user.patientProfile.demographics.age && (
+                          <div>
+                            <p className="text-sm font-medium text-muted-foreground">Age</p>
+                            <p className="font-medium">{user.patientProfile.demographics.age} years</p>
+                          </div>
+                        )}
+                        {user.patientProfile.demographics.gender && (
+                          <div>
+                            <p className="text-sm font-medium text-muted-foreground">Gender</p>
+                            <p className="font-medium">{user.patientProfile.demographics.gender}</p>
+                          </div>
+                        )}
+                        {user.patientProfile.demographics.procedure && (
+                          <div className="md:col-span-2">
+                            <p className="text-sm font-medium text-muted-foreground">Procedure</p>
+                            <p className="font-medium">{user.patientProfile.demographics.procedure}</p>
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <div className="py-8 text-center text-muted-foreground">
+                        <p>No health information available</p>
+                        <p className="text-xs mt-2">Your doctor may add this information during your consultation</p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            )}
       </main>
+        </div>
+      </div>
 
       <InviteDialog
         open={inviteDialogOpen}
@@ -890,6 +982,6 @@ export default function PatientDashboard() {
         }}
         isLoading={scheduleCallMutation.isPending}
       />
-    </div>
+    </SidebarProvider>
   );
 }

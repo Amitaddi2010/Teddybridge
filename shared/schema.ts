@@ -33,6 +33,12 @@ export const doctorProfiles = sqliteTable("doctor_profiles", {
   phoneNumber: text("phone_number").notNull(),
   specialty: text("specialty"),
   city: text("city"),
+  education: text("education"),
+  experience: text("experience"),
+  institution: text("institution"),
+  languages: text("languages"),
+  shortBio: text("short_bio"),
+  linkedinUrl: text("linkedin_url"),
   available: integer("available", { mode: "boolean" }).default(true),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
@@ -267,6 +273,8 @@ export type AuditLog = typeof auditLogs.$inferSelect;
 export type InsertAuditLog = z.infer<typeof insertAuditLogSchema>;
 export type Prom = typeof proms.$inferSelect;
 export type SurveyResponse = typeof surveyResponses.$inferSelect;
+export const insertSurveyResponseSchema = createInsertSchema(surveyResponses);
+export type InsertSurveyResponse = z.infer<typeof insertSurveyResponseSchema>;
 
 // Frontend validation schemas
 export const patientSignupSchema = z.object({

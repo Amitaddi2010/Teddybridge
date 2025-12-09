@@ -23,6 +23,8 @@ import {
   type InsertPatientConnection,
   type SurveyRequest,
   type InsertSurveyRequest,
+  type SurveyResponse,
+  type InsertSurveyResponse,
   type DoctorCall,
   type InsertDoctorCall,
   type PatientCall,
@@ -67,6 +69,10 @@ export interface IStorage {
   updateSurveyRequest(id: string, updates: Partial<SurveyRequest>): Promise<SurveyRequest | undefined>;
   getSurveysForDoctor(doctorId: string): Promise<(SurveyRequest & { patient?: User | null })[]>;
   getSurveysForPatient(patientId: string): Promise<SurveyRequest[]>;
+  
+  // Survey Responses
+  createSurveyResponse(response: InsertSurveyResponse): Promise<SurveyResponse>;
+  getSurveyResponse(surveyRequestId: string): Promise<SurveyResponse | undefined>;
   
   // Doctor Calls
   createDoctorCall(call: InsertDoctorCall): Promise<DoctorCall>;
@@ -232,6 +238,12 @@ export class DatabaseStorage implements IStorage {
         phoneNumber: updates.phoneNumber || "",
         specialty: updates.specialty || null,
         city: updates.city || null,
+        education: updates.education || null,
+        experience: updates.experience || null,
+        institution: updates.institution || null,
+        languages: updates.languages || null,
+        shortBio: updates.shortBio || null,
+        linkedinUrl: updates.linkedinUrl || null,
         available: updates.available !== undefined ? updates.available : true,
       });
     }
@@ -247,6 +259,24 @@ export class DatabaseStorage implements IStorage {
     }
     if (updates.city !== undefined) {
       profileToUpdate.city = updates.city || null;
+    }
+    if (updates.education !== undefined) {
+      profileToUpdate.education = updates.education || null;
+    }
+    if (updates.experience !== undefined) {
+      profileToUpdate.experience = updates.experience || null;
+    }
+    if (updates.institution !== undefined) {
+      profileToUpdate.institution = updates.institution || null;
+    }
+    if (updates.languages !== undefined) {
+      profileToUpdate.languages = updates.languages || null;
+    }
+    if (updates.shortBio !== undefined) {
+      profileToUpdate.shortBio = updates.shortBio || null;
+    }
+    if (updates.linkedinUrl !== undefined) {
+      profileToUpdate.linkedinUrl = updates.linkedinUrl || null;
     }
     if (updates.available !== undefined) {
       profileToUpdate.available = updates.available;
@@ -373,6 +403,19 @@ export class DatabaseStorage implements IStorage {
     return database.select().from(surveyRequests)
       .where(eq(surveyRequests.patientId, patientId))
       .orderBy(desc(surveyRequests.createdAt));
+  }
+
+  // Survey Responses
+  async createSurveyResponse(response: InsertSurveyResponse): Promise<SurveyResponse> {
+    const database = await this.db();
+    const [created] = await database.insert(surveyResponses).values(response).returning();
+    return created;
+  }
+
+  async getSurveyResponse(surveyRequestId: string): Promise<SurveyResponse | undefined> {
+    const database = await this.db();
+    const [response] = await database.select().from(surveyResponses).where(eq(surveyResponses.surveyRequestId, surveyRequestId));
+    return response;
   }
 
   // Doctor Calls

@@ -1,0 +1,186 @@
+/**
+ * Assembly AI Integration for Transcription
+ */
+
+export interface AssemblyAITranscriptResponse {
+  id: string;
+  status: 'queued' | 'processing' | 'completed' | 'error';
+  text?: string;
+  words?: Array<{
+    text: string;
+    start: number;
+    end: number;
+    confidence: number;
+    speaker?: string;
+  }>;
+  error?: string;
+}
+
+export class AssemblyAIService {
+  private apiKey: string;
+  private baseUrl = 'https://api.assemblyai.com/v2';
+
+  constructor() {
+    this.apiKey = process.env.ASSEMBLY_AI_API_KEY || '';
+    if (!this.apiKey) {
+      console.warn('⚠️  ASSEMBLY_AI_API_KEY not set. Transcription will not work.');
+    }
+  }
+
+  /**
+   * Upload audio file to Assembly AI and get upload URL
+   * Retries up to 3 times on network errors
+   */
+  async uploadAudio(audioBuffer: Buffer, retries = 3): Promise<string> {
+    if (!this.apiKey) {
+      throw new Error('Assembly AI API key not configured');
+    }
+
+    console.log(`Uploading audio buffer to Assembly AI (size: ${audioBuffer.length} bytes, attempt ${4 - retries}/3)...`);
+
+    for (let attempt = 0; attempt < retries; attempt++) {
+      try {
+        // Create AbortController for timeout
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutes timeout
+
+        // First, upload the file
+        const uploadResponse = await fetch(`${this.baseUrl}/upload`, {
+          method: 'POST',
+          headers: {
+            'authorization': this.apiKey,
+            'Content-Type': 'application/octet-stream',
+          },
+          body: audioBuffer,
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeoutId);
+
+        if (!uploadResponse.ok) {
+          const error = await uploadResponse.text();
+          throw new Error(`Assembly AI upload error: ${error}`);
+        }
+
+        const uploadData = await uploadResponse.json();
+        console.log(`Upload successful, got upload URL: ${uploadData.upload_url}`);
+        return uploadData.upload_url;
+      } catch (error: any) {
+        const isLastAttempt = attempt === retries - 1;
+        
+        if (error.name === 'AbortError' || error.code === 'UND_ERR_CONNECT_TIMEOUT') {
+          if (isLastAttempt) {
+            throw new Error('Assembly AI upload timeout after multiple attempts. The file may be too large or network connection is unstable. Please try again later.');
+          }
+          console.log(`Upload attempt ${attempt + 1} timed out, retrying...`);
+          // Wait before retrying (exponential backoff)
+          await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 2000));
+          continue;
+        }
+        
+        // For other errors, throw immediately
+        throw error;
+      }
+    }
+
+    throw new Error('Failed to upload audio after multiple attempts');
+  }
+
+  /**
+   * Submit a recording URL for transcription
+   * If the URL requires authentication, use uploadAudio instead
+   */
+  async submitTranscription(audioUrl: string): Promise<string> {
+    if (!this.apiKey) {
+      throw new Error('Assembly AI API key not configured');
+    }
+
+    const response = await fetch(`${this.baseUrl}/transcript`, {
+      method: 'POST',
+      headers: {
+        'authorization': this.apiKey,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        audio_url: audioUrl,
+        speaker_labels: true, // Enable speaker diarization
+        auto_chapters: true,
+        sentiment_analysis: false,
+        entity_detection: false,
+      }),
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Assembly AI error: ${error}`);
+    }
+
+    const data = await response.json();
+    return data.id;
+  }
+
+  /**
+   * Submit audio buffer for transcription (uploads first, then transcribes)
+   */
+  async submitTranscriptionFromBuffer(audioBuffer: Buffer): Promise<string> {
+    if (!this.apiKey) {
+      throw new Error('Assembly AI API key not configured');
+    }
+
+    // Upload the audio file first
+    const uploadUrl = await this.uploadAudio(audioBuffer);
+    
+    // Then submit for transcription using the upload URL
+    return this.submitTranscription(uploadUrl);
+  }
+
+  /**
+   * Get transcription status and result
+   */
+  async getTranscription(transcriptId: string): Promise<AssemblyAITranscriptResponse> {
+    if (!this.apiKey) {
+      throw new Error('Assembly AI API key not configured');
+    }
+
+    const response = await fetch(`${this.baseUrl}/transcript/${transcriptId}`, {
+      headers: {
+        'authorization': this.apiKey,
+      },
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Assembly AI error: ${error}`);
+    }
+
+    return await response.json();
+  }
+
+  /**
+   * Poll for transcription completion
+   */
+  async waitForTranscription(transcriptId: string, maxWaitTime = 300000): Promise<string> {
+    const startTime = Date.now();
+    const pollInterval = 3000; // 3 seconds
+
+    while (Date.now() - startTime < maxWaitTime) {
+      const transcript = await this.getTranscription(transcriptId);
+
+      if (transcript.status === 'completed' && transcript.text) {
+        return transcript.text;
+      }
+
+      if (transcript.status === 'error') {
+        throw new Error(`Transcription failed: ${transcript.error || 'Unknown error'}`);
+      }
+
+      // Wait before polling again
+      await new Promise(resolve => setTimeout(resolve, pollInterval));
+    }
+
+    throw new Error('Transcription timeout');
+  }
+}
+
+export const assemblyAIService = new AssemblyAIService();
+
