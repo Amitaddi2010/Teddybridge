@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <!-- Teddy Bear Head -->
+  <circle cx="50" cy="50" r="35" fill="#8B4513" stroke="#654321" stroke-width="2"/>
+  
+  <!-- Left Ear -->
+  <circle cx="30" cy="30" r="12" fill="#8B4513" stroke="#654321" stroke-width="2"/>
+  <circle cx="30" cy="30" r="7" fill="#A0522D"/>
+  
+  <!-- Right Ear -->
+  <circle cx="70" cy="30" r="12" fill="#8B4513" stroke="#654321" stroke-width="2"/>
+  <circle cx="70" cy="30" r="7" fill="#A0522D"/>
+  
+  <!-- Left Eye -->
+  <circle cx="42" cy="45" r="4" fill="#000"/>
+  <circle cx="43" cy="44" r="1.5" fill="#FFF"/>
+  
+  <!-- Right Eye -->
+  <circle cx="58" cy="45" r="4" fill="#000"/>
+  <circle cx="59" cy="44" r="1.5" fill="#FFF"/>
+  
+  <!-- Nose -->
+  <ellipse cx="50" cy="55" rx="4" ry="3" fill="#000"/>
+  
+  <!-- Mouth -->
+  <path d="M 50 55 Q 45 60 40 58" stroke="#000" stroke-width="2" fill="none" stroke-linecap="round"/>
+  <path d="M 50 55 Q 55 60 60 58" stroke="#000" stroke-width="2" fill="none" stroke-linecap="round"/>
+  
+  <!-- Snout Highlight -->
+  <ellipse cx="50" cy="52" rx="3" ry="2" fill="#A0522D" opacity="0.3"/>
+</svg>
+
