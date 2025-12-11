@@ -33,6 +33,13 @@ import {
   PaginationNext,
   PaginationPrevious,
 } from "@/components/ui/pagination";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -49,6 +56,9 @@ import {
   Edit,
   Download,
   FileText,
+  Copy,
+  RefreshCw,
+  Check,
 } from "lucide-react";
 import type { SurveyRequest, User, DoctorProfile, LinkRecord } from "@shared/schema";
 
@@ -67,6 +77,8 @@ export default function DoctorDashboard() {
   const [editProfileDialogOpen, setEditProfileDialogOpen] = useState(false);
   const [selectedSurvey, setSelectedSurvey] = useState<SurveyWithPatient & { responseData?: any } | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
+  const [qrCodeDialogOpen, setQrCodeDialogOpen] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const { data: surveys, isLoading: loadingSurveys } = useQuery<SurveyWithPatient[]>({
     queryKey: ["/api/doctor/surveys"],
@@ -159,8 +171,10 @@ export default function DoctorDashboard() {
     mutationFn: async () => {
       return apiRequest("POST", "/api/qr/create", {});
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/qr/my-code"] });
+    onSuccess: async () => {
+      // Invalidate and refetch the QR code, then open dialog
+      await queryClient.refetchQueries({ queryKey: ["/api/qr/my-code"] });
+      setQrCodeDialogOpen(true);
       toast({
         title: "QR Code generated!",
         description: "Patients can now scan to link with you.",
@@ -446,27 +460,28 @@ export default function DoctorDashboard() {
   return (
     <SidebarProvider style={sidebarStyle}>
       <div className="flex h-screen w-full">
-        <Sidebar>
-          <SidebarContent>
-            <SidebarGroup>
-              <div className="p-4">
-                <Logo size="md" />
-              </div>
+        <Sidebar className="border-r">
+          <SidebarContent className="gap-0">
+            <SidebarGroup className="px-4 py-6 border-b">
+              <Logo size="md" />
             </SidebarGroup>
             
-            <SidebarGroup>
-              <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+            <SidebarGroup className="px-2 py-4">
+              <SidebarGroupLabel className="px-2 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Navigation
+              </SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu>
+                <SidebarMenu className="space-y-1">
                   {navItems.map((item) => (
                     <SidebarMenuItem key={item.id}>
                       <SidebarMenuButton
                         onClick={() => setActiveTab(item.id)}
                         isActive={activeTab === item.id}
                         data-testid={`nav-${item.id}`}
+                        className="w-full justify-start gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-accent hover:text-accent-foreground data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:shadow-sm"
                       >
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
+                        <item.icon className="h-5 w-5" />
+                        <span className="font-medium">{item.title}</span>
                       </SidebarMenuButton>
                     </SidebarMenuItem>
                   ))}
@@ -474,13 +489,17 @@ export default function DoctorDashboard() {
               </SidebarGroupContent>
             </SidebarGroup>
 
-            <SidebarGroup className="mt-auto">
+            <SidebarGroup className="mt-auto px-2 py-4 border-t">
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton onClick={logout} data-testid="button-logout">
-                      <LogOut className="h-4 w-4" />
-                      <span>Log Out</span>
+                    <SidebarMenuButton 
+                      onClick={logout} 
+                      data-testid="button-logout"
+                      className="w-full justify-start gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
+                    >
+                      <LogOut className="h-5 w-5" />
+                      <span className="font-medium">Log Out</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
@@ -489,53 +508,98 @@ export default function DoctorDashboard() {
           </SidebarContent>
         </Sidebar>
 
-        <div className="flex flex-col flex-1">
-          <header className="flex items-center justify-between gap-4 p-4 border-b bg-background">
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <header className="flex items-center justify-between gap-4 px-6 py-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="flex items-center gap-4">
-              <SidebarTrigger data-testid="button-sidebar-toggle" />
-              <h1 className="text-xl font-semibold" data-testid="text-page-title">
+              <SidebarTrigger 
+                data-testid="button-sidebar-toggle"
+                className="hover:bg-accent"
+              />
+              <div className="h-6 w-px bg-border" />
+              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">
                 {navItems.find(i => i.id === activeTab)?.title || "Dashboard"}
               </h1>
             </div>
             <ThemeToggle />
           </header>
 
-          <main className="flex-1 overflow-auto p-6 bg-background">
+          <main className="flex-1 overflow-auto bg-background">
             {activeTab === "dashboard" && (
-              <div className="space-y-6">
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <StatsCard
-                    title="Total Patients"
-                    value={totalPatients}
-                    icon={Users}
-                    description="Linked via QR code"
-                  />
-                  <StatsCard
-                    title="Pending PROMS"
-                    value={pendingSurveys}
-                    icon={Send}
-                    description="Awaiting completion"
-                  />
-                  <StatsCard
-                    title="Completed Surveys"
-                    value={completedSurveys}
-                    icon={ClipboardCheck}
-                    description="Ready for review"
-                  />
-                  <StatsCard
-                    title="Active Calls"
-                    value={0}
-                    icon={Phone}
-                    description="Doctor-to-doctor"
-                  />
+              <div className="space-y-0">
+                {/* Hero Section - SalesPatriot Style */}
+                <section className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white py-16 px-6">
+                  <div className="max-w-7xl mx-auto">
+                    <div className="mb-6">
+                      <h1 className="text-3xl md:text-4xl lg:text-5xl font-extrabold tracking-tight mb-4">
+                        Taking You from Opportunity to Outcome
+                      </h1>
+                      <p className="text-lg md:text-xl text-white/85 max-w-3xl">
+                        We help doctors find, review, and track more PROMS. One platform to unify your entire patient monitoring workflow.
+                      </p>
+                    </div>
+                  </div>
+                </section>
+
+                {/* Stats Cards */}
+                <section className="py-16 px-6 bg-background">
+                  <div className="max-w-7xl mx-auto">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
+                      <Card className="border-2">
+                        <CardContent className="p-6">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-muted-foreground mb-1">Total Patients</p>
+                              <p className="text-3xl font-bold">{totalPatients}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Linked via QR code</p>
+                            </div>
+                            <Users className="h-10 w-10 text-primary opacity-60" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card className="border-2">
+                        <CardContent className="p-6">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-muted-foreground mb-1">Pending PROMS</p>
+                              <p className="text-3xl font-bold">{pendingSurveys}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Awaiting completion</p>
+                            </div>
+                            <Send className="h-10 w-10 text-primary opacity-60" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card className="border-2">
+                        <CardContent className="p-6">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-muted-foreground mb-1">Completed Surveys</p>
+                              <p className="text-3xl font-bold">{completedSurveys}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Ready for review</p>
+                            </div>
+                            <ClipboardCheck className="h-10 w-10 text-primary opacity-60" />
+                          </div>
+                        </CardContent>
+                      </Card>
+                      <Card className="border-2">
+                        <CardContent className="p-6">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-muted-foreground mb-1">Active Calls</p>
+                              <p className="text-3xl font-bold">0</p>
+                              <p className="text-xs text-muted-foreground mt-1">Doctor-to-doctor</p>
+                            </div>
+                            <Phone className="h-10 w-10 text-primary opacity-60" />
+                          </div>
+                        </CardContent>
+                      </Card>
                 </div>
 
                 <div className="grid lg:grid-cols-3 gap-6">
                   <div className="lg:col-span-2">
-                    <Card>
+                        <Card className="border-2">
                       <CardHeader className="flex flex-row items-center justify-between gap-4">
                         <div>
-                          <CardTitle>PROMS Overview</CardTitle>
+                              <CardTitle className="text-xl">PROMS Overview</CardTitle>
                           <CardDescription>
                             Patient-reported outcome measures tracking
                           </CardDescription>
@@ -575,11 +639,25 @@ export default function DoctorDashboard() {
                     />
                   </div>
                 </div>
+                  </div>
+                </section>
               </div>
             )}
 
             {activeTab === "patients" && (
-              <div className="space-y-6">
+              <div className="space-y-0">
+                {/* Hero Section */}
+                <section className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white py-12 px-6">
+                  <div className="max-w-7xl mx-auto">
+                    <h2 className="text-3xl md:text-4xl font-bold mb-3">Find top opportunities across your network</h2>
+                    <p className="text-white/85 text-lg max-w-3xl">
+                      Monitor linked patients in real time. Never miss another patient connection opportunity again.
+                    </p>
+                  </div>
+                </section>
+
+                <section className="py-8 px-6 bg-background">
+                  <div className="max-w-7xl mx-auto space-y-6">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <h2 className="text-2xl font-bold">Linked Patients</h2>
@@ -668,11 +746,25 @@ export default function DoctorDashboard() {
                     })}
                   </div>
                 )}
+                  </div>
+                </section>
               </div>
             )}
 
             {activeTab === "proms" && (
-              <div className="space-y-6">
+              <div className="space-y-0">
+                {/* Hero Section */}
+                <section className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white py-12 px-6">
+                  <div className="max-w-7xl mx-auto">
+                    <h2 className="text-3xl md:text-4xl font-bold mb-3">Organize PROMS details without opening PDFs</h2>
+                    <p className="text-white/85 text-lg max-w-3xl">
+                      Eliminate time spent digging through forms. Extract details and track outcomes from surveys, instantly structuring them for fast review.
+                    </p>
+                  </div>
+                </section>
+
+                <section className="py-8 px-6 bg-background">
+                  <div className="max-w-7xl mx-auto space-y-6">
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <h2 className="text-2xl font-bold">PROMS Management</h2>
@@ -768,16 +860,30 @@ export default function DoctorDashboard() {
                     isLoading={sendSurveyMutation.isPending}
                   />
                 )}
+                  </div>
+                </section>
               </div>
             )}
 
             {activeTab === "calls" && (
-              <div className="space-y-6">
+              <div className="space-y-0">
+                {/* Hero Section */}
+                <section className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white py-12 px-6">
+                  <div className="max-w-7xl mx-auto">
+                    <h2 className="text-3xl md:text-4xl font-bold mb-3">Doctor-to-Doctor Calls</h2>
+                    <p className="text-white/85 text-lg max-w-3xl">
+                      Secure communication with AI-powered transcription and call summaries
+                    </p>
+                  </div>
+                </section>
+
+                <section className="py-8 px-6 bg-background">
+                  <div className="max-w-7xl mx-auto space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-2xl font-bold">Doctor Calls</h2>
+                    <h2 className="text-2xl font-bold">Available Doctors</h2>
                     <p className="text-muted-foreground">
-                      Secure doctor-to-doctor communication with transcription
+                      Connect with other doctors for consultations
                     </p>
                   </div>
                   <Button
@@ -790,7 +896,7 @@ export default function DoctorDashboard() {
                   </Button>
                 </div>
 
-                <Card>
+                <Card className="border-2">
                   <CardHeader>
                     <CardTitle>Available Doctors</CardTitle>
                     <CardDescription>
@@ -799,31 +905,41 @@ export default function DoctorDashboard() {
                   </CardHeader>
                   <CardContent>
                     {doctors?.filter(d => d.id !== user?.id).length === 0 ? (
-                      <div className="py-8 text-center text-muted-foreground">
-                        No other doctors available for calls
+                      <div className="py-12 text-center">
+                        <Users className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+                        <h3 className="font-semibold text-lg mb-2">No other doctors available</h3>
+                        <p className="text-muted-foreground">
+                          Other doctors will appear here when they join the platform
+                        </p>
                       </div>
                     ) : (
                       <div className="space-y-3">
                         {doctors?.filter(d => d.id !== user?.id).map(doctor => (
                           <div
                             key={doctor.id}
-                            className="flex items-center justify-between gap-4 p-4 rounded-lg border hover-elevate"
+                            className="flex items-center justify-between gap-4 p-4 rounded-lg border-2 hover:border-primary/50 transition-colors hover:bg-accent/50"
                           >
                             <div className="flex items-center gap-3">
-                              <div className="h-10 w-10 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-                                <Users className="h-5 w-5 text-green-600" />
+                              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                                <Users className="h-6 w-6 text-primary" />
                               </div>
                               <div>
-                                <p className="font-medium">{doctor.name}</p>
+                                <p className="font-semibold text-base">{doctor.name}</p>
                                 <p className="text-sm text-muted-foreground">
                                   {doctor.doctorProfile?.specialty || "Healthcare Provider"}
                                 </p>
+                                {doctor.doctorProfile?.city && (
+                                  <p className="text-xs text-muted-foreground">
+                                    {doctor.doctorProfile.city}
+                                  </p>
+                                )}
                               </div>
                             </div>
                             <Button
                               onClick={() => initiateCallMutation.mutate(doctor.id)}
                               disabled={initiateCallMutation.isPending || !!activeCall}
                               data-testid={`button-call-doctor-${doctor.id}`}
+                              size="lg"
                             >
                               <Phone className="h-4 w-4 mr-2" />
                               {activeCall ? "In Call" : "Call"}
@@ -836,11 +952,18 @@ export default function DoctorDashboard() {
                 </Card>
 
                 {/* Call History */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Call History</CardTitle>
-                    <CardDescription>
+                <div className="mt-8">
+                  <div className="mb-4">
+                    <h2 className="text-2xl font-bold">Call History</h2>
+                    <p className="text-muted-foreground">
                       View your past doctor-to-doctor calls with summaries
+                    </p>
+                  </div>
+                <Card className="border-2">
+                  <CardHeader>
+                    <CardTitle>Recent Calls</CardTitle>
+                    <CardDescription>
+                      Browse and download transcripts from your previous consultations
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
@@ -863,37 +986,41 @@ export default function DoctorDashboard() {
                           return (
                             <div
                               key={call.id}
-                              className="p-4 rounded-lg border space-y-3"
+                              className="p-5 rounded-lg border-2 hover:border-primary/50 transition-colors space-y-3"
                             >
                               <div className="flex items-start justify-between">
                                 <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-1">
-                                    <Phone className="h-4 w-4 text-muted-foreground" />
-                                    <p className="font-medium">
-                                      {isCaller ? "Called" : "Received call from"} {otherDoctor?.name || "Unknown Doctor"}
-                                    </p>
-                                  </div>
-                                  <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                                    {callDate && (
-                                      <span>{callDate.toLocaleString()}</span>
-                                    )}
-                                    {callDuration !== null && (
-                                      <span>Duration: {callDuration} min</span>
-                                    )}
-                                    {call.isLive && (
-                                      <span className="text-green-600 font-medium">Live</span>
-                                    )}
-                                    {call.endedAt && (
-                                      <span className="text-muted-foreground">Ended</span>
-                                    )}
+                                  <div className="flex items-center gap-3 mb-2">
+                                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                                      <Phone className="h-5 w-5 text-primary" />
+                                    </div>
+                                    <div>
+                                      <p className="font-semibold text-base">
+                                        {isCaller ? "Called" : "Received call from"} {otherDoctor?.name || "Unknown Doctor"}
+                                      </p>
+                                      <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
+                                        {callDate && (
+                                          <span>{callDate.toLocaleString()}</span>
+                                        )}
+                                        {callDuration !== null && (
+                                          <span>• Duration: {callDuration} min</span>
+                                        )}
+                                        {call.isLive && (
+                                          <span className="text-green-600 font-medium">• Live</span>
+                                        )}
+                                        {call.endedAt && (
+                                          <span className="text-muted-foreground">• Ended</span>
+                                        )}
+                                      </div>
+                                    </div>
                                   </div>
                                 </div>
                               </div>
                               
                               {call.summaryText && (
-                                <div className="mt-3 pt-3 border-t">
-                                  <div className="flex items-center justify-between mb-2">
-                                    <p className="text-sm font-medium">Call Summary</p>
+                                <div className="mt-4 pt-4 border-t">
+                                  <div className="flex items-center justify-between mb-3">
+                                    <p className="text-sm font-semibold">Call Summary</p>
                                     <div className="flex gap-2">
                                       <Button
                                         variant="outline"
@@ -902,7 +1029,7 @@ export default function DoctorDashboard() {
                                           const url = `/api/doctor/call/${call.id}/download/pdf`;
                                           window.open(url, '_blank');
                                         }}
-                                        className="h-7 text-xs"
+                                        className="h-8"
                                       >
                                         <Download className="h-3 w-3 mr-1" />
                                         PDF
@@ -914,23 +1041,25 @@ export default function DoctorDashboard() {
                                           const url = `/api/doctor/call/${call.id}/download/doc`;
                                           window.open(url, '_blank');
                                         }}
-                                        className="h-7 text-xs"
+                                        className="h-8"
                                       >
                                         <FileText className="h-3 w-3 mr-1" />
                                         DOC
                                       </Button>
                                     </div>
                                   </div>
-                                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                                    {call.summaryText}
-                                  </p>
+                                  <div className="p-4 bg-muted/50 rounded-lg">
+                                    <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                                      {call.summaryText}
+                                    </p>
+                                  </div>
                                   {call.transcriptText && (
-                                    <details className="mt-3">
-                                      <summary className="text-sm font-medium cursor-pointer text-muted-foreground hover:text-foreground">
+                                    <details className="mt-4">
+                                      <summary className="text-sm font-semibold cursor-pointer text-primary hover:text-primary/80 transition-colors">
                                         View Full Transcript
                                       </summary>
-                                      <div className="mt-2 p-3 bg-muted rounded-md">
-                                        <p className="text-sm text-muted-foreground whitespace-pre-wrap">
+                                      <div className="mt-3 p-4 bg-muted rounded-lg">
+                                        <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
                                           {call.transcriptText}
                                         </p>
                                       </div>
@@ -940,17 +1069,19 @@ export default function DoctorDashboard() {
                               )}
                               
                               {call.liveSummary && !call.summaryText && (
-                                <div className="mt-3 pt-3 border-t">
-                                  <p className="text-sm font-medium mb-1">Live Summary</p>
-                                  <p className="text-sm text-muted-foreground whitespace-pre-wrap">
-                                    {call.liveSummary}
-                                  </p>
+                                <div className="mt-4 pt-4 border-t">
+                                  <p className="text-sm font-semibold mb-2">Live Summary</p>
+                                  <div className="p-4 bg-muted/50 rounded-lg">
+                                    <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                                      {call.liveSummary}
+                                    </p>
+                                  </div>
                                 </div>
                               )}
                               
                               {!call.summaryText && !call.liveSummary && call.endedAt && (
-                                <div className="mt-3 pt-3 border-t">
-                                  <p className="text-sm text-muted-foreground italic mb-2">
+                                <div className="mt-4 pt-4 border-t">
+                                  <p className="text-sm text-muted-foreground italic mb-3">
                                     No summary available for this call.
                                   </p>
                                   <Button
@@ -1013,10 +1144,10 @@ export default function DoctorDashboard() {
                         })}
                       </div>
                     ) : (
-                      <div className="py-8 text-center text-muted-foreground">
-                        <Phone className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                        <p>No call history yet</p>
-                        <p className="text-sm mt-2">Your past calls will appear here</p>
+                      <div className="py-12 text-center">
+                        <Phone className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+                        <h3 className="font-semibold text-lg mb-2">No call history yet</h3>
+                        <p className="text-muted-foreground">Your past calls will appear here</p>
                       </div>
                     )}
 
@@ -1095,22 +1226,35 @@ export default function DoctorDashboard() {
                     )}
                   </CardContent>
                 </Card>
+                </div>
+                  </div>
+                </section>
               </div>
             )}
 
             {activeTab === "settings" && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold">Settings</h2>
-                  <p className="text-muted-foreground">
-                    Manage your account and preferences
-                  </p>
-                </div>
+              <div className="space-y-0">
+                {/* Hero Section */}
+                <section className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white py-12 px-6">
+                  <div className="max-w-7xl mx-auto">
+                    <h2 className="text-3xl md:text-4xl font-bold mb-3">Settings</h2>
+                    <p className="text-white/85 text-lg max-w-3xl">
+                      Manage your account and profile preferences
+                    </p>
+                  </div>
+                </section>
 
-                <Card>
+                <section className="py-8 px-6 bg-background">
+                  <div className="max-w-7xl mx-auto">
+                <Card className="border-2">
                   <CardHeader>
                     <div className="flex items-center justify-between">
-                      <CardTitle>Complete Profile Information</CardTitle>
+                      <div>
+                        <CardTitle>Profile Information</CardTitle>
+                        <CardDescription>
+                          View and edit your complete profile details
+                        </CardDescription>
+                      </div>
                       <Button
                         onClick={() => setEditProfileDialogOpen(true)}
                         variant="outline"
@@ -1124,64 +1268,64 @@ export default function DoctorDashboard() {
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div className="grid gap-6 md:grid-cols-2">
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">Name</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">Name</p>
                         <p className="font-medium text-base">{user?.name || "Not set"}</p>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">Email</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">Email</p>
                         <p className="font-medium text-base">{user?.email || "Not set"}</p>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">Contact Number *</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">Contact Number *</p>
                         <p className="font-medium text-base">
                           {(user as DoctorWithProfile)?.doctorProfile?.phoneNumber || "Not set"}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">Specialty</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">Specialty</p>
                         <p className="font-medium text-base">
                           {(user as DoctorWithProfile)?.doctorProfile?.specialty || "Not set"}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">City</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">City</p>
                         <p className="font-medium text-base">
                           {(user as DoctorWithProfile)?.doctorProfile?.city || "Not set"}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">Education</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">Education</p>
                         <p className="font-medium text-base">
                           {(user as DoctorWithProfile)?.doctorProfile?.education || "Not set"}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">Experience</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">Experience</p>
                         <p className="font-medium text-base">
                           {(user as DoctorWithProfile)?.doctorProfile?.experience || "Not set"}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">Institution</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">Institution</p>
                         <p className="font-medium text-base">
                           {(user as DoctorWithProfile)?.doctorProfile?.institution || "Not set"}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">Languages</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">Languages</p>
                         <p className="font-medium text-base">
                           {(user as DoctorWithProfile)?.doctorProfile?.languages || "Not set"}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground mb-1">LinkedIn URL</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">LinkedIn URL</p>
                         {(user as DoctorWithProfile)?.doctorProfile?.linkedinUrl ? (
                           <a
                             href={(user as DoctorWithProfile)?.doctorProfile?.linkedinUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="font-medium text-base text-primary hover:underline"
+                            className="font-medium text-base text-primary hover:underline break-all"
                           >
                             {(user as DoctorWithProfile)?.doctorProfile?.linkedinUrl}
                           </a>
@@ -1190,14 +1334,18 @@ export default function DoctorDashboard() {
                         )}
                       </div>
                     </div>
-                    <div className="pt-4 border-t">
-                      <p className="text-sm font-medium text-muted-foreground mb-2">Short Bio</p>
-                      <p className="text-base whitespace-pre-wrap">
-                        {(user as DoctorWithProfile)?.doctorProfile?.shortBio || "Not set"}
-                      </p>
+                    <div className="pt-6 border-t">
+                      <p className="text-sm font-semibold text-muted-foreground mb-3">Short Bio</p>
+                      <div className="p-4 bg-muted/50 rounded-lg">
+                        <p className="text-base whitespace-pre-wrap leading-relaxed">
+                          {(user as DoctorWithProfile)?.doctorProfile?.shortBio || "Not set"}
+                        </p>
+                      </div>
                     </div>
                   </CardContent>
                 </Card>
+                  </div>
+                </section>
               </div>
             )}
           </main>
@@ -1226,6 +1374,81 @@ export default function DoctorDashboard() {
           }}
         />
       )}
+
+      <Dialog open={qrCodeDialogOpen} onOpenChange={setQrCodeDialogOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <QrCode className="h-5 w-5 text-primary" />
+              Your QR Code
+            </DialogTitle>
+            <DialogDescription>
+              Share this QR code with patients so they can link with you
+            </DialogDescription>
+          </DialogHeader>
+          {qrCode?.qrCodeUrl ? (
+            <div className="space-y-4">
+              <div className="flex justify-center p-4 bg-white rounded-lg">
+                <img
+                  src={qrCode.qrCodeUrl}
+                  alt="QR Code for patient linking"
+                  className="w-64 h-64"
+                />
+              </div>
+              {qrCode.linkUrl && (
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-xs text-muted-foreground mb-1">Link URL:</p>
+                  <p className="text-sm font-mono break-all">{qrCode.linkUrl}</p>
+                </div>
+              )}
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={async () => {
+                    if (qrCode.linkUrl) {
+                      await navigator.clipboard.writeText(qrCode.linkUrl);
+                      setCopied(true);
+                      toast({
+                        title: "Link copied!",
+                        description: "The QR code link has been copied to your clipboard.",
+                      });
+                      setTimeout(() => setCopied(false), 2000);
+                    }
+                  }}
+                >
+                  {copied ? (
+                    <>
+                      <Check className="h-4 w-4 mr-1" />
+                      Copied
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="h-4 w-4 mr-1" />
+                      Copy Link
+                    </>
+                  )}
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => {
+                    generateQrMutation.mutate();
+                  }}
+                  disabled={generateQrMutation.isPending}
+                >
+                  <RefreshCw className={`h-4 w-4 mr-1 ${generateQrMutation.isPending ? "animate-spin" : ""}`} />
+                  Regenerate
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <QrCode className="h-16 w-16 mx-auto text-muted-foreground/50 mb-4" />
+              <p className="text-muted-foreground">Loading QR code...</p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
     </SidebarProvider>
   );
 }

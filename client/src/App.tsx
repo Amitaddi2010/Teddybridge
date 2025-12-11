@@ -7,12 +7,15 @@ import { ThemeProvider } from "@/lib/theme";
 import { AuthProvider, useAuth } from "@/lib/auth";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
+import About from "@/pages/about";
 import Login from "@/pages/auth/login";
 import SignupPatient from "@/pages/auth/signup-patient";
 import SignupDoctor from "@/pages/auth/signup-doctor";
 import PatientDashboard from "@/pages/dashboard/patient";
 import DoctorDashboard from "@/pages/dashboard/doctor";
 import LinkPage from "@/pages/link";
+import PatientPage from "@/pages/patient";
+import DoctorPage from "@/pages/doctor";
 import { Loader2 } from "lucide-react";
 
 function ProtectedRoute({ 
@@ -87,6 +90,18 @@ function Router() {
         <AuthRedirect>
           <SignupDoctor />
         </AuthRedirect>
+      </Route>
+      
+      <Route path="/patient">
+        <PatientPage />
+      </Route>
+      
+      <Route path="/doctor">
+        <DoctorPage />
+      </Route>
+      
+      <Route path="/about">
+        <About />
       </Route>
       
       <Route path="/dashboard/patient">

@@ -20,9 +20,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // Get API base URL from environment or use relative path
+  const getApiBaseUrl = (): string => {
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (apiUrl) {
+      return apiUrl.replace(/\/$/, "");
+    }
+    return "";
+  };
+
   const refreshUser = async () => {
     try {
-      const res = await fetch("/api/auth/me", { credentials: "include" });
+      const url = `${getApiBaseUrl()}/api/auth/me`;
+      const res = await fetch(url, { credentials: "include" });
       if (res.ok) {
         const data = await res.json();
         setUser(data.user);
@@ -41,7 +51,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const login = async (email: string, password: string) => {
-    const res = await fetch("/api/auth/login", {
+    const url = `${getApiBaseUrl()}/api/auth/login`;
+    const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",
@@ -55,7 +66,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const logout = async () => {
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" });
+    const url = `${getApiBaseUrl()}/api/auth/logout`;
+    await fetch(url, { method: "POST", credentials: "include" });
     setUser(null);
   };
 

@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Logo } from "@/components/logo";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { loginSchema, type LoginInput } from "@shared/schema";
@@ -56,7 +55,6 @@ export default function Login() {
               Back to Home
             </Button>
           </Link>
-          <ThemeToggle />
         </div>
       </header>
 

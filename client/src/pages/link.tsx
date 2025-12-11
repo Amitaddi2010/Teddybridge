@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Logo } from "@/components/logo";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { DoctorLinkCard } from "@/components/doctor-link-card";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -65,7 +64,6 @@ export default function LinkPage() {
         <header className="w-full border-b">
           <div className="max-w-7xl mx-auto px-6 flex h-16 items-center justify-between gap-4">
             <Logo size="md" />
-            <ThemeToggle />
           </div>
         </header>
         <main className="flex-1 flex items-center justify-center p-6">
@@ -94,7 +92,6 @@ export default function LinkPage() {
                 Back to Home
               </Button>
             </Link>
-            <ThemeToggle />
           </div>
         </header>
         <main className="flex-1 flex items-center justify-center p-6">
@@ -128,7 +125,6 @@ export default function LinkPage() {
                 Back to Home
               </Button>
             </Link>
-            <ThemeToggle />
           </div>
         </header>
         <main className="flex-1 flex items-center justify-center p-6">
@@ -169,7 +165,6 @@ export default function LinkPage() {
                 Back to Home
               </Button>
             </Link>
-            <ThemeToggle />
           </div>
         </header>
         <main className="flex-1 flex items-center justify-center p-6">
@@ -202,7 +197,6 @@ export default function LinkPage() {
               Back to Dashboard
             </Button>
           </Link>
-          <ThemeToggle />
         </div>
       </header>
 

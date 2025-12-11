@@ -2,7 +2,6 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Logo } from "@/components/logo";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { 
   Users, 
   Stethoscope, 
@@ -13,7 +12,8 @@ import {
   Heart, 
   Activity,
   ArrowRight,
-  CheckCircle
+  CheckCircle,
+  LogIn
 } from "lucide-react";
 
 export default function Landing() {
@@ -23,15 +23,29 @@ export default function Landing() {
       <header className="absolute top-0 left-0 right-0 z-50 w-full border-b border-transparent bg-transparent" style={{ backgroundColor: 'transparent' }}>
         <div className="max-w-7xl mx-auto px-6">
           <div className="flex h-16 items-center justify-between gap-4">
-            <Logo size="md" />
-            
-            {/* Navigation Links - Hidden on mobile, shown on desktop */}
-             
+            <Link href="/">
+              <Logo size="md" />
+            </Link>
             
             <div className="flex items-center gap-3">
-              <ThemeToggle />
+              <Link href="/patient">
+                <Button variant="ghost" className="text-white hover:bg-white/10" data-testid="link-patient">
+                  Patient
+                </Button>
+              </Link>
+              <Link href="/doctor">
+                <Button variant="ghost" className="text-white hover:bg-white/10" data-testid="link-doctor">
+                  Doctor
+                </Button>
+              </Link>
+              <Link href="/about">
+                <Button variant="ghost" className="text-white hover:bg-white/10" data-testid="link-about">
+                  About Us
+                </Button>
+              </Link>
               <Link href="/login">
-                <Button variant="ghost" className="text-white hover:bg-white/10" data-testid="link-login">
+                <Button variant="ghost" className="text-white bg-white/20 hover:bg-white/30 flex items-center gap-2" data-testid="link-login">
+                  <LogIn className="h-4 w-4" />
                   Log In
                 </Button>
               </Link>

@@ -2975,9 +2975,11 @@ export async function registerRoutes(
       const transcript = await assemblyAIService.waitForTranscription(transcriptId, 300000); // 5 minutes max
       console.log(`[${callId}] Transcription completed, length: ${transcript.length} characters`);
 
-      // Get caller and callee names
+      // Get caller and callee information with profiles
       const caller = await storage.getUser(call.callerDoctorId);
       const callee = await storage.getUser(call.calleeDoctorId);
+      const callerProfile = caller ? await storage.getDoctorProfile(caller.id) : null;
+      const calleeProfile = callee ? await storage.getDoctorProfile(callee.id) : null;
 
       // Generate summary using Groq AI
       const callDuration = call.startedAt && call.endedAt
@@ -2992,6 +2994,20 @@ export async function registerRoutes(
           callDuration,
           callerName: caller?.name || "Unknown",
           calleeName: callee?.name || "Unknown",
+          callerInfo: caller ? {
+            name: caller.name,
+            specialty: callerProfile?.specialty || null,
+            institution: callerProfile?.institution || null,
+            shortBio: callerProfile?.shortBio || null,
+            education: callerProfile?.education || null,
+          } : undefined,
+          calleeInfo: callee ? {
+            name: callee.name,
+            specialty: calleeProfile?.specialty || null,
+            institution: calleeProfile?.institution || null,
+            shortBio: calleeProfile?.shortBio || null,
+            education: calleeProfile?.education || null,
+          } : undefined,
         });
         console.log(`[${callId}] Summary generated successfully`);
       } catch (error: any) {

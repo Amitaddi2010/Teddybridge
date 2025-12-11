@@ -8,7 +8,6 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Logo } from "@/components/logo";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { useToast } from "@/hooks/use-toast";
 import { doctorSignupSchema, type DoctorSignupInput } from "@shared/schema";
 import { User, Mail, Lock, Phone, MapPin, ArrowLeft, Loader2, Stethoscope } from "lucide-react";
@@ -62,7 +61,6 @@ export default function SignupDoctor() {
               Back to Home
             </Button>
           </Link>
-          <ThemeToggle />
         </div>
       </header>
 

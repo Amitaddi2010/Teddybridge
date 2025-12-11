@@ -273,39 +273,40 @@ export default function PatientDashboard() {
   return (
     <SidebarProvider style={sidebarStyle}>
       <div className="flex h-screen w-full">
-        <Sidebar>
-          <SidebarContent>
-            <SidebarGroup>
-              <div className="p-4">
-          <Logo size="md" />
-              </div>
+        <Sidebar className="border-r">
+          <SidebarContent className="gap-0">
+            <SidebarGroup className="px-4 py-6 border-b">
+              <Logo size="md" />
             </SidebarGroup>
             
-            <SidebarGroup>
-              <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+            <SidebarGroup className="px-2 py-4">
+              <SidebarGroupLabel className="px-2 mb-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                Navigation
+              </SidebarGroupLabel>
               <SidebarGroupContent>
-                <SidebarMenu>
+                <SidebarMenu className="space-y-1">
                   {navItems.map((item) => (
                     <SidebarMenuItem key={item.id}>
                       <SidebarMenuButton
                         onClick={() => setActiveTab(item.id)}
                         isActive={activeTab === item.id}
                         data-testid={`nav-${item.id}`}
+                        className="w-full justify-start gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-accent hover:text-accent-foreground data-[active=true]:bg-primary data-[active=true]:text-primary-foreground data-[active=true]:shadow-sm"
                       >
-                        <item.icon className="h-4 w-4" />
-                        <span>{item.title}</span>
+                        <item.icon className="h-5 w-5" />
+                        <span className="font-medium">{item.title}</span>
                         {item.id === "connections" && incomingRequests.length > 0 && (
-                          <span className="ml-auto bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
+                          <span className="ml-auto bg-primary-foreground/20 text-primary-foreground text-xs font-semibold px-2 py-0.5 rounded-full min-w-[1.5rem] text-center">
                             {incomingRequests.length}
                           </span>
                         )}
                         {item.id === "doctors" && linkedDoctors && linkedDoctors.length > 0 && (
-                          <span className="ml-auto bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
+                          <span className="ml-auto bg-primary-foreground/20 text-primary-foreground text-xs font-semibold px-2 py-0.5 rounded-full min-w-[1.5rem] text-center">
                             {linkedDoctors.length}
                           </span>
                         )}
                         {item.id === "surveys" && surveys && surveys.filter(s => s.status === "SENT" || s.status === "PENDING").length > 0 && (
-                          <span className="ml-auto bg-primary text-primary-foreground text-xs px-1.5 py-0.5 rounded-full">
+                          <span className="ml-auto bg-primary-foreground/20 text-primary-foreground text-xs font-semibold px-2 py-0.5 rounded-full min-w-[1.5rem] text-center">
                             {surveys.filter(s => s.status === "SENT" || s.status === "PENDING").length}
                           </span>
                         )}
@@ -316,13 +317,17 @@ export default function PatientDashboard() {
               </SidebarGroupContent>
             </SidebarGroup>
 
-            <SidebarGroup className="mt-auto">
+            <SidebarGroup className="mt-auto px-2 py-4 border-t">
               <SidebarGroupContent>
                 <SidebarMenu>
                   <SidebarMenuItem>
-                    <SidebarMenuButton onClick={logout} data-testid="button-logout">
-                      <LogOut className="h-4 w-4" />
-                      <span>Log Out</span>
+                    <SidebarMenuButton 
+                      onClick={logout} 
+                      data-testid="button-logout"
+                      className="w-full justify-start gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
+                    >
+                      <LogOut className="h-5 w-5" />
+                      <span className="font-medium">Log Out</span>
                     </SidebarMenuButton>
                   </SidebarMenuItem>
                 </SidebarMenu>
@@ -331,101 +336,123 @@ export default function PatientDashboard() {
           </SidebarContent>
         </Sidebar>
 
-        <div className="flex flex-col flex-1">
-          <header className="flex items-center justify-between gap-4 p-4 border-b bg-background">
+        <div className="flex flex-col flex-1 overflow-hidden">
+          <header className="flex items-center justify-between gap-4 px-6 py-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
             <div className="flex items-center gap-4">
-              <SidebarTrigger data-testid="button-sidebar-toggle" />
-              <h1 className="text-xl font-semibold" data-testid="text-page-title">
+              <SidebarTrigger 
+                data-testid="button-sidebar-toggle"
+                className="hover:bg-accent"
+              />
+              <div className="h-6 w-px bg-border" />
+              <h1 className="text-2xl font-bold tracking-tight" data-testid="text-page-title">
                 {navItems.find(i => i.id === activeTab)?.title || "Dashboard"}
               </h1>
             </div>
             <ThemeToggle />
-      </header>
+          </header>
 
-          <main className="flex-1 overflow-auto p-6 bg-background">
-
+          <main className="flex-1 overflow-auto bg-background">
             {activeTab === "dashboard" && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between gap-4">
-          <div>
-                    <h2 className="text-2xl font-bold">Welcome, {user?.name?.split(" ")[0]}!</h2>
-                    <p className="text-muted-foreground">
-              Connect with peers on your healthcare journey
-            </p>
-          </div>
-          <Button onClick={() => setInviteDialogOpen(true)} data-testid="button-invite-peer">
-            <UserPlus className="h-4 w-4 mr-2" />
-            Invite Peer
-          </Button>
-        </div>
+              <div className="space-y-0">
+                {/* Hero Section - SalesPatriot Style */}
+                <section className="relative bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white py-16 px-6">
+                  <div className="max-w-7xl mx-auto">
+                    <div className="mb-6">
+                      <h1 className="text-3xl md:text-4xl lg:text-5xl font-extrabold tracking-tight mb-4">
+                        Taking You from Connection to Recovery
+                      </h1>
+                      <p className="text-lg md:text-xl text-white/85 max-w-3xl">
+                        We help patients find, connect, and support each other through their healthcare journey. One platform to unify your entire peer support workflow.
+                      </p>
+                    </div>
+                    <Button 
+                      onClick={() => setInviteDialogOpen(true)} 
+                      size="lg"
+                      className="bg-white text-gray-900 hover:bg-white/90"
+                      data-testid="button-invite-peer"
+                    >
+                      <UserPlus className="h-5 w-5 mr-2" />
+                      Invite a Peer
+                    </Button>
+                  </div>
+                </section>
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-                  <Card>
-                    <CardContent className="p-4">
+                {/* Stats Cards */}
+                <section className="py-16 px-6 bg-background">
+                  <div className="max-w-7xl mx-auto">
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <Card className="border-2">
+                        <CardContent className="p-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-muted-foreground">Connections</p>
-                          <p className="text-2xl font-bold">{confirmedConnections.length}</p>
+                              <p className="text-sm font-medium text-muted-foreground mb-1">Connections</p>
+                              <p className="text-3xl font-bold">{confirmedConnections.length}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Active peers</p>
                         </div>
-                        <Users className="h-8 w-8 text-primary opacity-50" />
+                            <Users className="h-10 w-10 text-primary opacity-60" />
                       </div>
                     </CardContent>
                   </Card>
-                  <Card>
-                    <CardContent className="p-4">
+                      <Card className="border-2">
+                        <CardContent className="p-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-muted-foreground">Linked Doctors</p>
-                          <p className="text-2xl font-bold">{linkedDoctors?.length || 0}</p>
+                              <p className="text-sm font-medium text-muted-foreground mb-1">Linked Doctors</p>
+                              <p className="text-3xl font-bold">{linkedDoctors?.length || 0}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Via QR code</p>
                         </div>
-                        <LinkIcon className="h-8 w-8 text-primary opacity-50" />
+                            <LinkIcon className="h-10 w-10 text-primary opacity-60" />
                       </div>
                     </CardContent>
                   </Card>
-                  <Card>
-                    <CardContent className="p-4">
+                      <Card className="border-2">
+                        <CardContent className="p-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-muted-foreground">Pending Surveys</p>
-                          <p className="text-2xl font-bold">
+                              <p className="text-sm font-medium text-muted-foreground mb-1">Pending Surveys</p>
+                              <p className="text-3xl font-bold">
                             {surveys?.filter(s => s.status === "SENT" || s.status === "PENDING").length || 0}
                           </p>
+                              <p className="text-xs text-muted-foreground mt-1">Awaiting completion</p>
                         </div>
-                        <ClipboardCheck className="h-8 w-8 text-primary opacity-50" />
+                            <ClipboardCheck className="h-10 w-10 text-primary opacity-60" />
                       </div>
                     </CardContent>
                   </Card>
-                  <Card>
-                    <CardContent className="p-4">
+                      <Card className="border-2">
+                        <CardContent className="p-6">
                       <div className="flex items-center justify-between">
                         <div>
-                          <p className="text-sm text-muted-foreground">Scheduled Meetings</p>
-                          <p className="text-2xl font-bold">{scheduledMeetings.length}</p>
+                              <p className="text-sm font-medium text-muted-foreground mb-1">Scheduled Meetings</p>
+                              <p className="text-3xl font-bold">{scheduledMeetings.length}</p>
+                              <p className="text-xs text-muted-foreground mt-1">Upcoming calls</p>
                         </div>
-                        <Calendar className="h-8 w-8 text-primary opacity-50" />
+                            <Calendar className="h-10 w-10 text-primary opacity-60" />
                       </div>
                     </CardContent>
                   </Card>
                 </div>
+                  </div>
+                </section>
               </div>
             )}
 
             {activeTab === "peers" && (
-              <div className="space-y-6">
-                <div className="flex items-center justify-between gap-4">
-                  <div>
-                    <h2 className="text-2xl font-bold">Available Peers</h2>
-                    <p className="text-muted-foreground">
-                      Find and connect with other patients
+              <div className="space-y-0">
+                {/* Hero Section */}
+                <section className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white py-12 px-6">
+                  <div className="max-w-7xl mx-auto">
+                    <h2 className="text-3xl md:text-4xl font-bold mb-3">Find top opportunities across your network</h2>
+                    <p className="text-white/85 text-lg max-w-3xl">
+                      Monitor available peers in real time. Never miss another connection opportunity again.
                     </p>
                   </div>
-                  <Button onClick={() => setInviteDialogOpen(true)} data-testid="button-invite-peer">
-                    <UserPlus className="h-4 w-4 mr-2" />
-                    Invite Peer
-                  </Button>
-                </div>
-                
-            <div className="relative max-w-md">
+                </section>
+
+                <section className="py-8 px-6 bg-background">
+                  <div className="max-w-7xl mx-auto space-y-6">
+                    <div className="flex items-center justify-between gap-4">
+                      <div className="relative flex-1 max-w-md">
               <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <Input
                 type="search"
@@ -435,6 +462,11 @@ export default function PatientDashboard() {
                 className="pl-10"
                 data-testid="input-search-peers"
               />
+                      </div>
+                      <Button onClick={() => setInviteDialogOpen(true)} data-testid="button-invite-peer">
+                        <UserPlus className="h-4 w-4 mr-2" />
+                        Invite Peer
+                      </Button>
             </div>
 
             {loadingPatients ? (
@@ -460,7 +492,7 @@ export default function PatientDashboard() {
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid md:grid-cols-2 gap-4">
+              <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                 {filteredPatients.map(patient => (
                   <PatientCard
                     key={patient.id}
@@ -481,21 +513,32 @@ export default function PatientDashboard() {
                 ))}
               </div>
             )}
+                  </div>
+                </section>
               </div>
             )}
 
             {activeTab === "connections" && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold">My Connections</h2>
-                  <p className="text-muted-foreground">
-                    Manage your peer connections and requests
-                  </p>
-                </div>
+              <div className="space-y-0">
+                {/* Hero Section */}
+                <section className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white py-12 px-6">
+                  <div className="max-w-7xl mx-auto">
+                    <h2 className="text-3xl md:text-4xl font-bold mb-3">My Connections</h2>
+                    <p className="text-white/85 text-lg max-w-3xl">
+                      Manage your peer connections and requests
+                    </p>
+                  </div>
+                </section>
+
+                <section className="py-8 px-6 bg-background">
+                  <div className="max-w-7xl mx-auto space-y-6">
                 
             {incomingRequests.length > 0 && (
               <div className="space-y-4">
-                <h3 className="font-semibold text-lg">Incoming Requests</h3>
+                <div>
+                  <h3 className="text-xl font-bold mb-1">Incoming Requests</h3>
+                  <p className="text-sm text-muted-foreground">Accept or decline connection requests from peers</p>
+                </div>
                 <div className="space-y-3">
                   {incomingRequests.map(connection => (
                     <ConnectionRequestCard
@@ -514,7 +557,10 @@ export default function PatientDashboard() {
 
             {outgoingRequests.length > 0 && (
               <div className="space-y-4">
-                <h3 className="font-semibold text-lg">Sent Requests</h3>
+                <div>
+                  <h3 className="text-xl font-bold mb-1">Sent Requests</h3>
+                  <p className="text-sm text-muted-foreground">Pending connection requests you've sent</p>
+                </div>
                 <div className="space-y-3">
                   {outgoingRequests.map(connection => (
                     <ConnectionRequestCard
@@ -529,46 +575,57 @@ export default function PatientDashboard() {
             )}
 
             <div className="space-y-4">
-              <h3 className="font-semibold text-lg">Confirmed Connections</h3>
+              <div>
+                <h3 className="text-xl font-bold mb-1">Confirmed Connections</h3>
+                <p className="text-sm text-muted-foreground">Your active peer connections</p>
+              </div>
               {confirmedConnections.length === 0 ? (
-                <Card>
-                  <CardContent className="py-8 text-center">
-                    <LinkIcon className="h-10 w-10 mx-auto text-muted-foreground/50 mb-3" />
-                    <p className="text-muted-foreground">
-                      No confirmed connections yet. Send invites to start connecting!
+                <Card className="border-2">
+                  <CardContent className="py-12 text-center">
+                    <LinkIcon className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
+                    <h3 className="font-semibold text-lg mb-2">No confirmed connections yet</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Send invites to start connecting with peers!
                     </p>
+                    <Button onClick={() => setInviteDialogOpen(true)}>
+                      <UserPlus className="h-4 w-4 mr-2" />
+                      Invite a Peer
+                    </Button>
                   </CardContent>
                 </Card>
               ) : (
-                <div className="grid md:grid-cols-2 gap-4">
+                <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
                   {confirmedConnections.map(connection => {
                     const otherUser = connection.requesterPatientId === user?.id 
                       ? connection.target 
                       : connection.requester;
                     return (
-                      <Card key={connection.id} className="hover-elevate">
-                        <CardContent className="p-4 flex items-center justify-between gap-4">
-                          <div className="flex items-center gap-3">
-                            <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                              <Users className="h-5 w-5 text-primary" />
+                      <Card key={connection.id} className="border-2 hover:border-primary/50 transition-colors">
+                        <CardContent className="p-5">
+                          <div className="flex items-start gap-3 mb-4">
+                            <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
+                              <Users className="h-6 w-6 text-primary" />
                             </div>
-                            <div>
-                              <p className="font-medium">{otherUser?.name}</p>
+                            <div className="flex-1 min-w-0">
+                              <p className="font-semibold text-base truncate">{otherUser?.name || "Unknown"}</p>
                               <p className="text-sm text-muted-foreground">Connected</p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-1">
+                          <div className="flex items-center gap-2 pt-3 border-t">
                             <Button
-                              size="icon"
-                              variant="ghost"
+                              variant="outline"
+                              size="sm"
+                              className="flex-1"
                               onClick={() => otherUser && initiateCallMutation.mutate(otherUser.id)}
                               data-testid={`button-call-connection-${connection.id}`}
                             >
-                              <Phone className="h-4 w-4" />
+                              <Phone className="h-4 w-4 mr-1" />
+                              Call
                             </Button>
                             <Button
-                              size="icon"
-                              variant="ghost"
+                              variant="outline"
+                              size="sm"
+                              className="flex-1"
                               onClick={() => {
                                 if (otherUser) {
                                   setSelectedPatient(otherUser as PatientWithProfile);
@@ -577,7 +634,8 @@ export default function PatientDashboard() {
                               }}
                               data-testid={`button-schedule-connection-${connection.id}`}
                             >
-                              <Calendar className="h-4 w-4" />
+                              <Calendar className="h-4 w-4 mr-1" />
+                              Schedule
                             </Button>
                           </div>
                         </CardContent>
@@ -587,17 +645,25 @@ export default function PatientDashboard() {
                 </div>
               )}
             </div>
+                  </div>
+                </section>
               </div>
             )}
 
             {activeTab === "doctors" && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold">My Doctors</h2>
-                  <p className="text-muted-foreground">
-                    Doctors you've linked with via QR code
-                  </p>
-                </div>
+              <div className="space-y-0">
+                {/* Hero Section */}
+                <section className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white py-12 px-6">
+                  <div className="max-w-7xl mx-auto">
+                    <h2 className="text-3xl md:text-4xl font-bold mb-3">My Doctors</h2>
+                    <p className="text-white/85 text-lg max-w-3xl">
+                      Doctors you've linked with via QR code
+                    </p>
+                  </div>
+                </section>
+
+                <section className="py-8 px-6 bg-background">
+                  <div className="max-w-7xl mx-auto space-y-6">
               {loadingLinkedDoctors ? (
                 <div className="grid md:grid-cols-2 gap-4">
                   {[1, 2].map(i => (
@@ -605,7 +671,7 @@ export default function PatientDashboard() {
                   ))}
                 </div>
               ) : !linkedDoctors || linkedDoctors.length === 0 ? (
-                <Card>
+                <Card className="border-2">
                   <CardContent className="py-12 text-center">
                     <LinkIcon className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
                     <h3 className="font-semibold text-lg mb-2">No doctors linked</h3>
@@ -620,25 +686,25 @@ export default function PatientDashboard() {
                     const doctor = record.doctor;
                     if (!doctor) return null;
                     return (
-                      <Card key={record.id} className="hover-elevate">
-                        <CardContent className="p-4">
+                      <Card key={record.id} className="border-2 hover:border-primary/50 transition-colors">
+                        <CardContent className="p-5">
                           <div className="flex items-start gap-3">
                             <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0">
                               <Users className="h-6 w-6 text-primary" />
                             </div>
                             <div className="flex-1 min-w-0">
-                              <p className="font-semibold truncate">{doctor.name}</p>
+                              <p className="font-semibold text-base truncate">{doctor.name}</p>
                               {doctor.doctorProfile?.specialty && (
-                                <p className="text-sm text-muted-foreground truncate">
+                                <p className="text-sm text-muted-foreground truncate mt-1">
                                   {doctor.doctorProfile.specialty}
                                 </p>
                               )}
                               {doctor.doctorProfile?.city && (
-                                <p className="text-xs text-muted-foreground truncate">
+                                <p className="text-xs text-muted-foreground truncate mt-1">
                                   {doctor.doctorProfile.city}
                                 </p>
                               )}
-                              <p className="text-xs text-muted-foreground mt-1">
+                              <p className="text-xs text-muted-foreground mt-2">
                                 Linked {new Date(record.linkedAt).toLocaleDateString()}
                               </p>
                             </div>
@@ -649,17 +715,25 @@ export default function PatientDashboard() {
                   })}
                 </div>
               )}
-            </div>
+                  </div>
+                </section>
+              </div>
             )}
 
             {activeTab === "surveys" && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold">Surveys</h2>
-                  <p className="text-muted-foreground">
-                    Complete surveys sent by your doctors to track your health outcomes
-                  </p>
-                </div>
+              <div className="space-y-0">
+                {/* Hero Section */}
+                <section className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white py-12 px-6">
+                  <div className="max-w-7xl mx-auto">
+                    <h2 className="text-3xl md:text-4xl font-bold mb-3">Surveys</h2>
+                    <p className="text-white/85 text-lg max-w-3xl">
+                      Complete surveys sent by your doctors to track your health outcomes
+                    </p>
+                  </div>
+                </section>
+
+                <section className="py-8 px-6 bg-background">
+                  <div className="max-w-7xl mx-auto space-y-6">
               {loadingSurveys ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map(i => (
@@ -667,7 +741,7 @@ export default function PatientDashboard() {
                   ))}
                 </div>
               ) : !surveys || surveys.length === 0 ? (
-                <Card>
+                <Card className="border-2">
                   <CardContent className="py-12 text-center">
                     <ClipboardCheck className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
                     <h3 className="font-semibold text-lg mb-2">No surveys yet</h3>
@@ -677,7 +751,7 @@ export default function PatientDashboard() {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {surveys.map((survey) => {
                     const isPending = survey.status === "PENDING" || survey.status === "SENT";
                     const isCompleted = survey.status === "COMPLETED";
@@ -685,8 +759,8 @@ export default function PatientDashboard() {
                     const surveyUrl = survey.surveyLink || "https://redcap.link/CarebridgeAI";
                     
                     return (
-                      <Card key={survey.id} className="hover-elevate">
-                        <CardContent className="p-4">
+                      <Card key={survey.id} className="border-2 hover:border-primary/50 transition-colors">
+                        <CardContent className="p-5">
                           <div className="flex items-start justify-between gap-4">
                             <div className="flex-1">
                               <div className="flex items-center gap-2 mb-2">
@@ -816,20 +890,27 @@ export default function PatientDashboard() {
                   })}
                 </div>
               )}
-            </div>
+                  </div>
+                </section>
+              </div>
             )}
 
             {activeTab === "meetings" && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold">Scheduled Meetings</h2>
-                  <p className="text-muted-foreground">
-                    Your upcoming peer-to-peer calls
-                  </p>
-                </div>
-                
+              <div className="space-y-0">
+                {/* Hero Section */}
+                <section className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white py-12 px-6">
+                  <div className="max-w-7xl mx-auto">
+                    <h2 className="text-3xl md:text-4xl font-bold mb-3">Scheduled Meetings</h2>
+                    <p className="text-white/85 text-lg max-w-3xl">
+                      Your upcoming peer-to-peer calls
+                    </p>
+                  </div>
+                </section>
+
+                <section className="py-8 px-6 bg-background">
+                  <div className="max-w-7xl mx-auto space-y-6">
               {scheduledMeetings.length === 0 ? (
-                <Card>
+                <Card className="border-2">
                   <CardContent className="py-12 text-center">
                     <Calendar className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
                     <h3 className="font-semibold text-lg mb-2">No meetings scheduled</h3>
@@ -839,7 +920,7 @@ export default function PatientDashboard() {
                   </CardContent>
                 </Card>
               ) : (
-                <div className="space-y-3">
+                <div className="space-y-4">
                   {scheduledMeetings.map(meeting => (
                     <MeetingCard
                       key={meeting.id}
@@ -857,22 +938,34 @@ export default function PatientDashboard() {
                   ))}
                 </div>
               )}
-            </div>
+                  </div>
+                </section>
+              </div>
             )}
 
             {activeTab === "settings" && (
-              <div className="space-y-6">
-                <div>
-                  <h2 className="text-2xl font-bold">Settings</h2>
-                  <p className="text-muted-foreground">
-                    Manage your account and preferences
-                  </p>
-                </div>
+              <div className="space-y-0">
+                {/* Hero Section */}
+                <section className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white py-12 px-6">
+                  <div className="max-w-7xl mx-auto">
+                    <h2 className="text-3xl md:text-4xl font-bold mb-3">Settings</h2>
+                    <p className="text-white/85 text-lg max-w-3xl">
+                      Manage your account and preferences
+                    </p>
+                  </div>
+                </section>
 
-                <Card>
+                <section className="py-8 px-6 bg-background">
+                  <div className="max-w-7xl mx-auto space-y-6">
+                <Card className="border-2">
                   <CardHeader>
                     <div className="flex items-center justify-between">
-                      <CardTitle>Profile Information</CardTitle>
+                      <div>
+                        <CardTitle>Profile Information</CardTitle>
+                        <CardDescription>
+                          View and edit your profile details
+                        </CardDescription>
+                      </div>
                       <Button
                         onClick={() => setEditProfileDialogOpen(true)}
                         variant="outline"
@@ -884,31 +977,31 @@ export default function PatientDashboard() {
                       </Button>
                     </div>
                   </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Name</p>
-                        <p className="font-medium">{user?.name || "Not set"}</p>
+                  <CardContent className="space-y-6">
+                    <div className="grid gap-6 md:grid-cols-2">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">Name</p>
+                        <p className="font-medium text-base">{user?.name || "Not set"}</p>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Email</p>
-                        <p className="font-medium">{user?.email || "Not set"}</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">Email</p>
+                        <p className="font-medium text-base">{user?.email || "Not set"}</p>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Phone Number</p>
-                        <p className="font-medium">
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">Phone Number</p>
+                        <p className="font-medium text-base">
                           {user?.patientProfile?.phoneNumber || "Not provided"}
                         </p>
                       </div>
-                      <div>
-                        <p className="text-sm font-medium text-muted-foreground">Account Type</p>
-                        <p className="font-medium capitalize">{user?.role?.toLowerCase() || "Patient"}</p>
+                      <div className="space-y-1">
+                        <p className="text-sm font-semibold text-muted-foreground">Account Type</p>
+                        <p className="font-medium text-base capitalize">{user?.role?.toLowerCase() || "Patient"}</p>
                       </div>
                     </div>
                   </CardContent>
                 </Card>
 
-                <Card>
+                <Card className="border-2">
                   <CardHeader>
                     <CardTitle>Health Information</CardTitle>
                     <CardDescription>
@@ -918,34 +1011,36 @@ export default function PatientDashboard() {
                   <CardContent className="space-y-4">
 
                     {user?.patientProfile?.demographics ? (
-                      <div className="grid gap-4 md:grid-cols-2">
+                      <div className="grid gap-6 md:grid-cols-2">
                         {user.patientProfile.demographics.age && (
-                          <div>
-                            <p className="text-sm font-medium text-muted-foreground">Age</p>
-                            <p className="font-medium">{user.patientProfile.demographics.age} years</p>
+                          <div className="space-y-1">
+                            <p className="text-sm font-semibold text-muted-foreground">Age</p>
+                            <p className="font-medium text-base">{user.patientProfile.demographics.age} years</p>
                           </div>
                         )}
                         {user.patientProfile.demographics.gender && (
-                          <div>
-                            <p className="text-sm font-medium text-muted-foreground">Gender</p>
-                            <p className="font-medium">{user.patientProfile.demographics.gender}</p>
+                          <div className="space-y-1">
+                            <p className="text-sm font-semibold text-muted-foreground">Gender</p>
+                            <p className="font-medium text-base">{user.patientProfile.demographics.gender}</p>
                           </div>
                         )}
                         {user.patientProfile.demographics.procedure && (
-                          <div className="md:col-span-2">
-                            <p className="text-sm font-medium text-muted-foreground">Procedure</p>
-                            <p className="font-medium">{user.patientProfile.demographics.procedure}</p>
+                          <div className="md:col-span-2 space-y-1">
+                            <p className="text-sm font-semibold text-muted-foreground">Procedure</p>
+                            <p className="font-medium text-base">{user.patientProfile.demographics.procedure}</p>
                           </div>
                         )}
                       </div>
                     ) : (
-                      <div className="py-8 text-center text-muted-foreground">
-                        <p>No health information available</p>
-                        <p className="text-xs mt-2">Your doctor may add this information during your consultation</p>
+                      <div className="py-8 text-center">
+                        <p className="text-muted-foreground mb-2">No health information available</p>
+                        <p className="text-xs text-muted-foreground">Your doctor may add this information during your consultation</p>
                       </div>
                     )}
                   </CardContent>
                 </Card>
+                  </div>
+                </section>
               </div>
             )}
       </main>
