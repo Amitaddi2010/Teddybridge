@@ -11,6 +11,9 @@ import About from "@/pages/about";
 import Login from "@/pages/auth/login";
 import SignupPatient from "@/pages/auth/signup-patient";
 import SignupDoctor from "@/pages/auth/signup-doctor";
+import ForgotPassword from "@/pages/auth/forgot-password";
+import ResetPassword from "@/pages/auth/reset-password";
+import VerifyEmail from "@/pages/auth/verify-email";
 import PatientDashboard from "@/pages/dashboard/patient";
 import DoctorDashboard from "@/pages/dashboard/doctor";
 import LinkPage from "@/pages/link";
@@ -90,6 +93,18 @@ function Router() {
         <AuthRedirect>
           <SignupDoctor />
         </AuthRedirect>
+      </Route>
+      
+      <Route path="/forgot-password">
+        <ForgotPassword />
+      </Route>
+      
+      <Route path="/reset-password">
+        <ResetPassword />
+      </Route>
+      
+      <Route path="/verify-email">
+        <VerifyEmail />
       </Route>
       
       <Route path="/patient">

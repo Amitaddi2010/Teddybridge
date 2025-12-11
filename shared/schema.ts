@@ -7,7 +7,8 @@ import { z } from "zod";
 export const users = sqliteTable("users", {
   id: text("id").primaryKey().$defaultFn(() => crypto.randomUUID()),
   email: text("email").notNull().unique(),
-  passwordHash: text("password_hash").notNull(),
+  passwordHash: text("password_hash"), // Optional for Firebase users
+  firebaseUid: text("firebase_uid").unique(), // Firebase user ID
   role: text("role", { enum: ["PATIENT", "DOCTOR"] }).notNull(),
   name: text("name").notNull(),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),

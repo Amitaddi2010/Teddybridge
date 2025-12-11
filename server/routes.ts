@@ -10,8 +10,10 @@ import {
   patientSignupSchema, 
   doctorSignupSchema, 
   loginSchema,
+  users,
   type User 
 } from "@shared/schema";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
 import sgMail from "@sendgrid/mail";
 import twilio from "twilio";
@@ -107,6 +109,10 @@ export async function registerRoutes(
           const user = await storage.getUserByEmail(email);
           if (!user) {
             return done(null, false, { message: "Invalid credentials" });
+          }
+          // Check if user is a Firebase user (no password hash)
+          if (!user.passwordHash) {
+            return done(null, false, { message: "Please sign in with Google" });
           }
           const isValid = await verifyPassword(password, user.passwordHash);
           if (!isValid) {
@@ -316,6 +322,165 @@ export async function registerRoutes(
       }
       res.json({ message: "Logged out successfully" });
     });
+  });
+
+  // Firebase authentication endpoints
+  app.post("/api/auth/firebase/login", async (req, res) => {
+    try {
+      const { firebaseUid, email, name, photoURL, role } = req.body;
+      
+      if (!firebaseUid || !email) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      // Check if user exists by email first
+      let existingUser = await storage.getUserByEmail(email);
+      
+      // If not found by email, check by Firebase UID
+      if (!existingUser) {
+        existingUser = await storage.getUserByFirebaseUid(firebaseUid);
+      }
+
+      if (existingUser) {
+        // Update Firebase UID if not set
+        if (!existingUser.firebaseUid) {
+          await storage.updateUser(existingUser.id, { firebaseUid });
+          // Refresh user data
+          existingUser = await storage.getUser(existingUser.id);
+          if (!existingUser) {
+            return res.status(500).json({ message: "Failed to update user" });
+          }
+        }
+        
+        // Log in the user using Promise wrapper
+        await new Promise<void>((resolve, reject) => {
+          req.logIn(existingUser, (err) => {
+            if (err) {
+              console.error("Login error:", err);
+              reject(err);
+              return;
+            }
+            resolve();
+          });
+        });
+        
+        // Save session explicitly
+        await new Promise<void>((resolve, reject) => {
+          req.session.save((err) => {
+            if (err) {
+              console.error("Session save error:", err);
+              reject(err);
+              return;
+            }
+            resolve();
+          });
+        });
+        
+        storage.createAuditLog({
+          userId: existingUser.id,
+          action: "USER_LOGIN",
+          resourceType: "user",
+          resourceId: existingUser.id,
+          metadata: { method: "firebase" },
+        }).catch(console.error);
+        
+        return res.json({ message: "Logged in successfully", user: existingUser });
+      } else {
+        return res.status(404).json({ message: "User not found. Please sign up first." });
+      }
+    } catch (error) {
+      console.error("Firebase login error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.post("/api/auth/firebase/signup", async (req, res) => {
+    try {
+      const { firebaseUid, email, name, photoURL, role } = req.body;
+      
+      if (!firebaseUid || !email || !name || !role) {
+        return res.status(400).json({ message: "Missing required fields" });
+      }
+
+      if (role !== "PATIENT" && role !== "DOCTOR") {
+        return res.status(400).json({ message: "Invalid role" });
+      }
+
+      // Check if user already exists by email
+      const existingUser = await storage.getUserByEmail(email);
+      if (existingUser) {
+        return res.status(400).json({ message: "Email already registered" });
+      }
+
+      // Check if Firebase UID already exists
+      const existingFirebaseUser = await storage.getUserByFirebaseUid(firebaseUid);
+      if (existingFirebaseUser) {
+        return res.status(400).json({ message: "Firebase account already registered" });
+      }
+
+      // Create user without password hash
+      const user = await storage.createUser({
+        email,
+        name,
+        role: role as "PATIENT" | "DOCTOR",
+        firebaseUid,
+        passwordHash: null, // Firebase users don't have password hash
+      });
+
+      // Create profile based on role
+      if (role === "PATIENT") {
+        await storage.createPatientProfile({
+          userId: user.id,
+          phoneNumber: null,
+          demographics: null,
+        });
+      } else {
+        await storage.createDoctorProfile({
+          userId: user.id,
+          phoneNumber: "",
+          specialty: null,
+          city: null,
+          available: true,
+        });
+      }
+
+      await storage.createAuditLog({
+        userId: user.id,
+        action: "USER_SIGNUP",
+        resourceType: "user",
+        resourceId: user.id,
+        metadata: { role, method: "firebase" },
+      });
+
+      // Log in the user using Promise wrapper
+      await new Promise<void>((resolve, reject) => {
+        req.logIn(user, (err) => {
+          if (err) {
+            console.error("Login error:", err);
+            reject(err);
+            return;
+          }
+          resolve();
+        });
+      });
+      
+      // Save session explicitly
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) {
+            console.error("Session save error:", err);
+            reject(err);
+            return;
+          }
+          resolve();
+        });
+      });
+      
+      return res.status(201).json({ message: "Account created successfully", user });
+    } catch (error) {
+      console.error("Firebase signup error:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
   });
 
   app.get("/api/auth/me", async (req, res) => {
