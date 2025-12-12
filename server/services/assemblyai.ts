@@ -17,14 +17,11 @@ export interface AssemblyAITranscriptResponse {
 }
 
 export class AssemblyAIService {
-  private apiKey: string;
   private baseUrl = 'https://api.assemblyai.com/v2';
 
-  constructor() {
-    this.apiKey = process.env.ASSEMBLY_AI_API_KEY || '';
-    if (!this.apiKey) {
-      console.warn('⚠️  ASSEMBLY_AI_API_KEY not set. Transcription will not work.');
-    }
+  private get apiKey(): string {
+    // Read API key dynamically to ensure it's loaded from .env
+    return process.env.ASSEMBLY_AI_API_KEY || '';
   }
 
   /**
@@ -157,6 +154,34 @@ export class AssemblyAIService {
   }
 
   /**
+   * Format transcript with speaker labels
+   */
+  private formatTranscriptWithSpeakers(transcript: AssemblyAITranscriptResponse): string {
+    if (!transcript.words || transcript.words.length === 0) {
+      // Fallback to plain text if words array is not available
+      return transcript.text || '';
+    }
+
+    // Group words by speaker and format
+    let formatted = '';
+    let currentSpeaker: string | undefined = undefined;
+    
+    for (const word of transcript.words) {
+      if (word.speaker && word.speaker !== currentSpeaker) {
+        // New speaker detected
+        if (currentSpeaker !== undefined) {
+          formatted += '\n'; // Add line break between speakers
+        }
+        formatted += `[${word.speaker}]: `;
+        currentSpeaker = word.speaker;
+      }
+      formatted += word.text + ' ';
+    }
+
+    return formatted.trim();
+  }
+
+  /**
    * Poll for transcription completion
    */
   async waitForTranscription(transcriptId: string, maxWaitTime = 300000): Promise<string> {
@@ -167,7 +192,8 @@ export class AssemblyAIService {
       const transcript = await this.getTranscription(transcriptId);
 
       if (transcript.status === 'completed' && transcript.text) {
-        return transcript.text;
+        // Format transcript with speaker labels if available
+        return this.formatTranscriptWithSpeakers(transcript);
       }
 
       if (transcript.status === 'error') {

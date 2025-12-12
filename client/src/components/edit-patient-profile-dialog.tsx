@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { Edit } from "lucide-react";
 import type { User, PatientProfile } from "@shared/schema";
 
@@ -25,6 +26,7 @@ interface EditPatientProfileDialogProps {
       gender?: string;
       procedure?: string;
     };
+    showMatchPercentage?: boolean;
   }) => void;
   isLoading?: boolean;
   user?: (User & { patientProfile?: PatientProfile | null }) | null;
@@ -42,6 +44,7 @@ export function EditPatientProfileDialog({
   const [age, setAge] = useState("");
   const [gender, setGender] = useState("");
   const [procedure, setProcedure] = useState("");
+  const [showMatchPercentage, setShowMatchPercentage] = useState(false);
 
   useEffect(() => {
     if (user) {
@@ -50,6 +53,7 @@ export function EditPatientProfileDialog({
       setAge(user.patientProfile?.demographics?.age?.toString() || "");
       setGender(user.patientProfile?.demographics?.gender || "");
       setProcedure(user.patientProfile?.demographics?.procedure || "");
+      setShowMatchPercentage(user.patientProfile?.showMatchPercentage || false);
     }
   }, [user, open]);
 
@@ -63,6 +67,7 @@ export function EditPatientProfileDialog({
         gender?: string | null;
         procedure?: string | null;
       };
+      showMatchPercentage?: boolean;
     } = {};
     
     // Always send name if it's provided
@@ -88,6 +93,8 @@ export function EditPatientProfileDialog({
     
     submitData.demographics.gender = gender || null;
     submitData.demographics.procedure = procedure.trim() || null;
+    
+    submitData.showMatchPercentage = showMatchPercentage;
     
     onSubmit(submitData);
   };
@@ -172,6 +179,23 @@ export function EditPatientProfileDialog({
                 value={procedure}
                 onChange={(e) => setProcedure(e.target.value)}
                 data-testid="input-procedure"
+              />
+            </div>
+
+            <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
+              <div className="space-y-0.5">
+                <Label htmlFor="match-percentage" className="text-base">
+                  Show Match Percentages
+                </Label>
+                <p className="text-sm text-muted-foreground">
+                  Allow other patients to see match percentages with you (both parties must consent)
+                </p>
+              </div>
+              <Switch
+                id="match-percentage"
+                checked={showMatchPercentage}
+                onCheckedChange={setShowMatchPercentage}
+                data-testid="switch-match-percentage"
               />
             </div>
           </div>

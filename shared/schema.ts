@@ -24,6 +24,7 @@ export const patientProfiles = sqliteTable("patient_profiles", {
     gender?: string;
     procedure?: string;
   }>(),
+  showMatchPercentage: integer("show_match_percentage", { mode: "boolean" }).default(false),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 

@@ -2,16 +2,12 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Phone, PhoneOff, Mic, MicOff } from "lucide-react";
-import { cn } from "@/lib/utils";
 
 interface CallViewProps {
   participantName: string;
   isConnecting?: boolean;
   onEndCall: () => void;
   onMuteToggle?: () => void;
-  transcript?: string;
-  aiSummary?: string;
-  showTranscript?: boolean;
 }
 
 function getInitials(name: string): string {
@@ -34,9 +30,6 @@ export function CallView({
   isConnecting = false,
   onEndCall,
   onMuteToggle,
-  transcript,
-  aiSummary,
-  showTranscript = false,
 }: CallViewProps) {
   const [duration, setDuration] = useState(0);
   const [isMuted, setIsMuted] = useState(false);
@@ -60,10 +53,7 @@ export function CallView({
       className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm flex"
       data-testid="call-view"
     >
-      <div className={cn(
-        "flex-1 flex flex-col items-center justify-center",
-        showTranscript && "lg:pr-96"
-      )}>
+      <div className="flex-1 flex flex-col items-center justify-center">
         <div className="flex flex-col items-center gap-6">
           <div className="relative">
             <Avatar className="h-32 w-32">
@@ -107,44 +97,21 @@ export function CallView({
             <Button
               size="lg"
               variant="destructive"
-              className="h-20 w-20 rounded-full"
-              onClick={onEndCall}
+              className="h-20 w-20 rounded-full hover:bg-red-700 active:bg-red-800"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log("End call button clicked");
+                onEndCall();
+              }}
               data-testid="button-end-call"
+              type="button"
             >
               <PhoneOff className="h-8 w-8" />
             </Button>
           </div>
         </div>
       </div>
-      
-      {showTranscript && (
-        <div className="hidden lg:flex w-96 border-l bg-card flex-col">
-          <div className="p-4 border-b">
-            <h3 className="font-semibold">Live Transcript</h3>
-          </div>
-          
-          <div className="flex-1 overflow-y-auto p-4">
-            {transcript ? (
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap" data-testid="text-transcript">
-                {transcript}
-              </p>
-            ) : (
-              <p className="text-sm text-muted-foreground italic">
-                Transcript will appear here...
-              </p>
-            )}
-          </div>
-          
-          {aiSummary && (
-            <div className="border-t p-4">
-              <h4 className="font-medium text-sm mb-2">AI Summary</h4>
-              <p className="text-sm text-muted-foreground" data-testid="text-ai-summary">
-                {aiSummary}
-              </p>
-            </div>
-          )}
-        </div>
-      )}
     </div>
   );
 }

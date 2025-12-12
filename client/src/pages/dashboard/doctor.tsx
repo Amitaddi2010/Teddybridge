@@ -2,6 +2,16 @@ import { useState, useEffect, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -48,6 +58,7 @@ import {
   Users,
   ClipboardCheck,
   Phone,
+  PhoneOff,
   Settings,
   LogOut,
   QrCode,
@@ -59,6 +70,8 @@ import {
   Copy,
   RefreshCw,
   Check,
+  AlertCircle,
+  XCircle,
 } from "lucide-react";
 import type { SurveyRequest, User, DoctorProfile, LinkRecord } from "@shared/schema";
 
@@ -73,12 +86,22 @@ export default function DoctorDashboard() {
     participantName: string; 
     transcript?: string;
     aiSummary?: string;
+    callId?: string;
   } | null>(null);
   const [editProfileDialogOpen, setEditProfileDialogOpen] = useState(false);
   const [selectedSurvey, setSelectedSurvey] = useState<SurveyWithPatient & { responseData?: any } | null>(null);
   const [selectedPatientId, setSelectedPatientId] = useState<string | null>(null);
   const [qrCodeDialogOpen, setQrCodeDialogOpen] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+  const [callConfirmDialogOpen, setCallConfirmDialogOpen] = useState(false);
+  const [selectedDoctorForCall, setSelectedDoctorForCall] = useState<DoctorWithProfile | null>(null);
+  const [summaryConfirmDialogOpen, setSummaryConfirmDialogOpen] = useState(false);
+  const [selectedCallForSummary, setSelectedCallForSummary] = useState<{ id: string; calleeName?: string } | null>(null);
+  const [endCallConfirmDialogOpen, setEndCallConfirmDialogOpen] = useState(false);
+  const [clearStaleCallsDialogOpen, setClearStaleCallsDialogOpen] = useState(false);
+  const [summaryErrorDialogOpen, setSummaryErrorDialogOpen] = useState(false);
+  const [summaryError, setSummaryError] = useState<string | null>(null);
 
   const { data: surveys, isLoading: loadingSurveys } = useQuery<SurveyWithPatient[]>({
     queryKey: ["/api/doctor/surveys"],
@@ -221,11 +244,13 @@ export default function DoctorDashboard() {
     },
     onSuccess: (callData, calleeDoctorId) => {
       const callee = doctors?.find(d => d.id === calleeDoctorId);
+      console.log("Call initiated successfully, callData:", callData);
       setCurrentCallId(callData.id);
       setActiveCall({ 
         participantName: callee?.name || "Doctor",
         transcript: "",
         aiSummary: "",
+        callId: callData.id,
       });
       toast({
         title: "Connecting call...",
@@ -233,7 +258,16 @@ export default function DoctorDashboard() {
       });
     },
     onError: async (error) => {
-      const errorMessage = error instanceof Error ? error.message : "Something went wrong";
+      let errorMessage = "Something went wrong";
+      
+      // Try to extract a user-friendly message from the error
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        // Check if it's a service unavailable error (Twilio not configured)
+        if (errorMessage.includes("503") || errorMessage.includes("Service Unavailable") || errorMessage.includes("not configured")) {
+          errorMessage = "Call service is not available. Please contact your administrator.";
+        }
+      }
       
       // If the error is about being in an active call, try to clear stale calls
       if (errorMessage.includes("already in an active call")) {
@@ -250,13 +284,13 @@ export default function DoctorDashboard() {
         } catch (cleanupError) {
           console.error("Error clearing stale calls:", cleanupError);
         }
-      }
-      
+      } else {
       toast({
         title: "Failed to initiate call",
         description: errorMessage,
         variant: "destructive",
       });
+      }
     },
   });
 
@@ -265,6 +299,8 @@ export default function DoctorDashboard() {
       return apiRequest("POST", "/api/doctor/calls/clear-stale", {});
     },
     onSuccess: (data) => {
+      setClearStaleCallsDialogOpen(false);
+      queryClient.invalidateQueries({ queryKey: ["/api/doctor/calls"] });
       toast({
         title: "Stale calls cleared",
         description: data.message || "Cleared stale call records.",
@@ -286,6 +322,7 @@ export default function DoctorDashboard() {
     onSuccess: () => {
       setActiveCall(null);
       setCurrentCallId(null);
+      setEndCallConfirmDialogOpen(false);
       // Refresh call history to show the updated call with summary
       queryClient.invalidateQueries({ queryKey: ["/api/doctor/calls"] });
       toast({
@@ -297,11 +334,52 @@ export default function DoctorDashboard() {
       // Even if the API call fails, clear the local state
       setActiveCall(null);
       setCurrentCallId(null);
+      setEndCallConfirmDialogOpen(false);
       toast({
         title: "Call ended",
         description: "The call has been ended locally.",
         variant: "destructive",
       });
+    },
+  });
+
+  const generateSummaryMutation = useMutation({
+    mutationFn: async ({ callId, recordingSid }: { callId: string; recordingSid?: string }) => {
+      return apiRequest("POST", `/api/doctor/call/${callId}/process-recording`, { recordingSid });
+    },
+    onSuccess: () => {
+      setSummaryConfirmDialogOpen(false);
+      setSelectedCallForSummary(null);
+      queryClient.invalidateQueries({ queryKey: ["/api/doctor/calls"] });
+      toast({
+        title: "Summary generation started",
+        description: "Your call summary is being generated. This may take a few minutes.",
+      });
+    },
+    onError: (error) => {
+      let errorMessage = "Something went wrong while generating the summary.";
+      
+      if (error instanceof Error) {
+        // Extract user-friendly message from error
+        const errorText = error.message;
+        if (errorText.includes("Assembly AI API key not configured") || errorText.includes("ASSEMBLY_AI_API_KEY")) {
+          errorMessage = "Summary generation service is not configured. Please contact your administrator to set up the transcription service.";
+        } else if (errorText.includes("Groq API key not configured") || errorText.includes("GROQ_API_KEY")) {
+          errorMessage = "AI summary service is not configured. Please contact your administrator to set up the AI summary service.";
+        } else if (errorText.includes("Recording URL or RecordingSid is required")) {
+          errorMessage = "No recording is available for this call. The call may not have been recorded, or the recording may not be ready yet. Please try again later or contact support if the issue persists.";
+        } else if (errorText.includes("400") || errorText.includes("404")) {
+          errorMessage = "Unable to process this call. The recording may not be available yet, or the call may have occurred before recording was enabled.";
+        } else if (errorText.includes("500") || errorText.includes("503")) {
+          errorMessage = "The summary service is temporarily unavailable. Please try again in a few moments.";
+        } else {
+          errorMessage = errorText;
+        }
+      }
+      
+      setSummaryError(errorMessage);
+      setSummaryErrorDialogOpen(true);
+      setSummaryConfirmDialogOpen(false);
     },
   });
 
@@ -408,6 +486,35 @@ export default function DoctorDashboard() {
   });
   const totalPatients = linkedPatients?.length || 0;
 
+  // Poll for call status updates to sync with Twilio
+  useEffect(() => {
+    if (!activeCall || !currentCallId) return;
+    
+    const pollInterval = setInterval(async () => {
+      try {
+        const response = await apiRequest("GET", `/api/doctor/calls?page=1&limit=1`, {});
+        const calls = response.calls || [];
+        const currentCall = calls.find((c: any) => c.id === currentCallId);
+        
+        // If call is no longer live, clear active call state
+        if (currentCall && !currentCall.isLive) {
+          setActiveCall(null);
+          setCurrentCallId(null);
+          queryClient.invalidateQueries({ queryKey: ["/api/doctor/calls"] });
+          toast({
+            title: "Call ended",
+            description: "The call has been disconnected.",
+          });
+        }
+      } catch (error) {
+        // Silently fail polling errors
+        console.error("Error polling call status:", error);
+      }
+    }, 3000); // Poll every 3 seconds
+    
+    return () => clearInterval(pollInterval);
+  }, [activeCall, currentCallId]);
+
   // Check if active call has ended and clear it automatically
   useEffect(() => {
     if (activeCall && currentCallId && callHistoryData?.calls) {
@@ -434,21 +541,112 @@ export default function DoctorDashboard() {
 
   if (activeCall) {
     return (
-      <CallView
-        participantName={activeCall.participantName}
-        isConnecting={initiateCallMutation.isPending}
-        onEndCall={() => {
-          if (currentCallId) {
-            endCallMutation.mutate(currentCallId);
-          } else {
-            setActiveCall(null);
-            setCurrentCallId(null);
-          }
-        }}
-        transcript={activeCall.transcript}
-        aiSummary={activeCall.aiSummary}
-        showTranscript={true}
-      />
+      <>
+        <CallView
+          participantName={activeCall.participantName}
+          isConnecting={initiateCallMutation.isPending}
+          onEndCall={() => {
+            console.log("onEndCall called, opening dialog");
+            setEndCallConfirmDialogOpen(true);
+            console.log("Dialog state set to true");
+          }}
+        />
+        
+        {/* End Call Confirmation Dialog - Must be rendered even when CallView is active */}
+        <AlertDialog open={endCallConfirmDialogOpen} onOpenChange={(open) => {
+          console.log("Dialog onOpenChange:", open);
+          setEndCallConfirmDialogOpen(open);
+        }}>
+          <AlertDialogContent className="sm:max-w-[500px] p-0 gap-0 overflow-hidden z-[100]">
+            <div className="bg-gradient-to-br from-orange-50 via-red-50 to-amber-50 dark:from-orange-950/20 dark:via-red-950/20 dark:to-amber-950/20 p-6 pb-4">
+              <div className="flex items-start gap-4">
+                <div className="flex-shrink-0 w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                  <PhoneOff className="h-6 w-6 text-orange-600 dark:text-orange-400" />
+                </div>
+                <div className="flex-1 pt-1">
+                  <AlertDialogTitle className="text-2xl font-bold text-gray-900 dark:text-gray-50 mb-2">
+                    End Call?
+                  </AlertDialogTitle>
+                  <AlertDialogDescription className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                    Are you sure you want to end this call? The call will be terminated and a summary will be generated automatically.
+                  </AlertDialogDescription>
+                </div>
+              </div>
+            </div>
+            
+            <div className="px-6 py-4 bg-background">
+              <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+                <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <Phone className="h-5 w-5 text-primary" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-medium text-foreground truncate">
+                    {activeCall?.participantName || 'Unknown'}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Active call in progress
+                  </p>
+                </div>
+              </div>
+            </div>
+
+            <AlertDialogFooter className="px-6 py-4 bg-muted/30 gap-3 sm:gap-3">
+              <AlertDialogCancel className="w-full sm:w-auto order-2 sm:order-1">
+                Continue Call
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  
+                  // Try to get callId from multiple sources
+                  let callId = currentCallId || activeCall?.callId;
+                  
+                  // If still not found, try to find it from call history (most recent live call)
+                  if (!callId && callHistoryData?.calls) {
+                    const liveCall = callHistoryData.calls.find((c: any) => c.isLive);
+                    if (liveCall) {
+                      callId = liveCall.id;
+                      setCurrentCallId(liveCall.id);
+                      console.log("Found callId from call history:", callId);
+                    }
+                  }
+                  
+                  console.log("End Call button clicked in dialog");
+                  console.log("  currentCallId:", currentCallId);
+                  console.log("  activeCall?.callId:", activeCall?.callId);
+                  console.log("  callHistory live call:", callHistoryData?.calls?.find((c: any) => c.isLive)?.id);
+                  console.log("  Using callId:", callId);
+                  
+                  if (callId) {
+                    console.log("Calling endCallMutation with:", callId);
+                    try {
+                      const result = await endCallMutation.mutateAsync(callId);
+                      console.log("Call ended successfully, result:", result);
+                    } catch (error) {
+                      console.error("Error ending call:", error);
+                      // Still close dialog and clear state even on error
+                      setEndCallConfirmDialogOpen(false);
+                    }
+                  } else {
+                    console.log("No callId found, clearing local state");
+                    setActiveCall(null);
+                    setCurrentCallId(null);
+                    setEndCallConfirmDialogOpen(false);
+                  }
+                }}
+                className="w-full sm:w-auto order-1 sm:order-2 bg-orange-600 hover:bg-orange-700 text-white shadow-sm hover:shadow-md transition-all duration-200 font-semibold"
+                disabled={endCallMutation.isPending}
+                type="button"
+                autoFocus={false}
+              >
+                <PhoneOff className="h-4 w-4 mr-2" />
+                {endCallMutation.isPending ? "Ending..." : "End Call"}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      </>
     );
   }
 
@@ -463,7 +661,7 @@ export default function DoctorDashboard() {
         <Sidebar className="border-r">
           <SidebarContent className="gap-0">
             <SidebarGroup className="px-4 py-6 border-b">
-              <Logo size="md" />
+                <Logo size="md" />
             </SidebarGroup>
             
             <SidebarGroup className="px-2 py-4">
@@ -494,7 +692,7 @@ export default function DoctorDashboard() {
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton 
-                      onClick={logout} 
+                      onClick={() => setLogoutDialogOpen(true)} 
                       data-testid="button-logout"
                       className="w-full justify-start gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
                     >
@@ -887,7 +1085,7 @@ export default function DoctorDashboard() {
                     </p>
                   </div>
                   <Button
-                    onClick={() => clearStaleCallsMutation.mutate()}
+                    onClick={() => setClearStaleCallsDialogOpen(true)}
                     variant="outline"
                     size="sm"
                     disabled={clearStaleCallsMutation.isPending}
@@ -936,7 +1134,10 @@ export default function DoctorDashboard() {
                               </div>
                             </div>
                             <Button
-                              onClick={() => initiateCallMutation.mutate(doctor.id)}
+                              onClick={() => {
+                                setSelectedDoctorForCall(doctor);
+                                setCallConfirmDialogOpen(true);
+                              }}
                               disabled={initiateCallMutation.isPending || !!activeCall}
                               data-testid={`button-call-doctor-${doctor.id}`}
                               size="lg"
@@ -996,21 +1197,21 @@ export default function DoctorDashboard() {
                                     </div>
                                     <div>
                                       <p className="font-semibold text-base">
-                                        {isCaller ? "Called" : "Received call from"} {otherDoctor?.name || "Unknown Doctor"}
-                                      </p>
+                                      {isCaller ? "Called" : "Received call from"} {otherDoctor?.name || "Unknown Doctor"}
+                                    </p>
                                       <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-                                        {callDate && (
-                                          <span>{callDate.toLocaleString()}</span>
-                                        )}
-                                        {callDuration !== null && (
+                                    {callDate && (
+                                      <span>{callDate.toLocaleString()}</span>
+                                    )}
+                                    {callDuration !== null && (
                                           <span>• Duration: {callDuration} min</span>
-                                        )}
-                                        {call.isLive && (
+                                    )}
+                                    {call.isLive && (
                                           <span className="text-green-600 font-medium">• Live</span>
-                                        )}
-                                        {call.endedAt && (
+                                    )}
+                                    {call.endedAt && (
                                           <span className="text-muted-foreground">• Ended</span>
-                                        )}
+                                    )}
                                       </div>
                                     </div>
                                   </div>
@@ -1019,9 +1220,9 @@ export default function DoctorDashboard() {
                               
                               {call.summaryText && (
                                 <div className="mt-4 pt-4 border-t">
-                                  <div className="flex items-center justify-between mb-3">
-                                    <p className="text-sm font-semibold">Call Summary</p>
-                                    <div className="flex gap-2">
+                                  {/* Only show download buttons if there's a transcript (real summary) */}
+                                  {call.transcriptText && (
+                                    <div className="flex gap-2 mb-3">
                                       <Button
                                         variant="outline"
                                         size="sm"
@@ -1047,12 +1248,17 @@ export default function DoctorDashboard() {
                                         DOC
                                       </Button>
                                     </div>
-                                  </div>
-                                  <div className="p-4 bg-muted/50 rounded-lg">
-                                    <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                                      {call.summaryText}
-                                    </p>
-                                  </div>
+                                  )}
+                                  <details className="mt-4">
+                                    <summary className="text-sm font-semibold cursor-pointer text-primary hover:text-primary/80 transition-colors">
+                                      Call Summary
+                                    </summary>
+                                    <div className="mt-3 p-4 bg-muted/50 rounded-lg">
+                                      <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                                        {call.summaryText}
+                                      </p>
+                                    </div>
+                                  </details>
                                   {call.transcriptText && (
                                     <details className="mt-4">
                                       <summary className="text-sm font-semibold cursor-pointer text-primary hover:text-primary/80 transition-colors">
@@ -1065,6 +1271,28 @@ export default function DoctorDashboard() {
                                       </div>
                                     </details>
                                   )}
+                                  {/* TEMPORARY: Regenerate Summary button for testing (if transcript exists) */}
+                                  {call.transcriptText && (call.endedAt || !call.isLive) && (
+                                    <div className="mt-3">
+                                      <Button
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                          setSelectedCallForSummary({ 
+                                            id: call.id, 
+                                            calleeName: call.callee?.name || call.caller?.name || "Doctor" 
+                                          });
+                                          setSummaryConfirmDialogOpen(true);
+                                        }}
+                                        className="h-7 text-xs border-orange-300 text-orange-600 hover:bg-orange-50"
+                                        disabled={generateSummaryMutation.isPending}
+                                        title="Temporary: Regenerate summary for testing"
+                                      >
+                                        <RefreshCw className={`h-3 w-3 mr-1 ${generateSummaryMutation.isPending && selectedCallForSummary?.id === call.id ? "animate-spin" : ""}`} />
+                                        {generateSummaryMutation.isPending && selectedCallForSummary?.id === call.id ? "Regenerating..." : "Regenerate Summary"}
+                                      </Button>
+                                    </div>
+                                  )}
                                 </div>
                               )}
                               
@@ -1073,69 +1301,36 @@ export default function DoctorDashboard() {
                                   <p className="text-sm font-semibold mb-2">Live Summary</p>
                                   <div className="p-4 bg-muted/50 rounded-lg">
                                     <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                                      {call.liveSummary}
-                                    </p>
+                                    {call.liveSummary}
+                                  </p>
                                   </div>
                                 </div>
                               )}
                               
-                              {!call.summaryText && !call.liveSummary && call.endedAt && (
+                              {/* Show Generate Summary button if no transcript exists (meaning no real summary yet) */}
+                              {!call.transcriptText && (call.endedAt || !call.isLive) && (
                                 <div className="mt-4 pt-4 border-t">
                                   <p className="text-sm text-muted-foreground italic mb-3">
-                                    No summary available for this call.
+                                    {call.summaryText && call.summaryText.includes("Call completed. Duration:") 
+                                      ? "Basic summary available. Generate AI-powered summary with transcript and detailed insights."
+                                      : "No summary available for this call."
+                                    }
                                   </p>
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={async () => {
-                                      try {
-                                        // Try to find recording and process it
-                                        const response = await fetch(`/api/doctor/call/${call.id}/recording-info`, {
-                                          credentials: "include",
-                                        });
-                                        const data = await response.json();
-                                        
-                                        if (data.recordings && data.recordings.length > 0) {
-                                          // Use the most recent recording
-                                          const latestRecording = data.recordings[0];
-                                          const processResponse = await fetch(`/api/doctor/call/${call.id}/process-recording`, {
-                                            method: "POST",
-                                            headers: { "Content-Type": "application/json" },
-                                            credentials: "include",
-                                            body: JSON.stringify({ recordingSid: latestRecording.sid }),
-                                          });
-                                          
-                                          if (processResponse.ok) {
-                                            toast({
-                                              title: "Summary generation started",
-                                              description: "The summary will be available shortly. Please refresh in a few minutes.",
-                                            });
-                                            // Refresh call history after a delay
-                                            setTimeout(() => {
-                                              queryClient.invalidateQueries({ queryKey: ["/api/doctor/calls"] });
-                                            }, 30000); // Refresh after 30 seconds
-                                          } else {
-                                            throw new Error("Failed to start processing");
-                                          }
-                                        } else {
-                                          toast({
-                                            title: "No recording found",
-                                            description: "No recording is available for this call. The call may not have been recorded.",
-                                            variant: "destructive",
-                                          });
-                                        }
-                                      } catch (error: any) {
-                                        toast({
-                                          title: "Failed to generate summary",
-                                          description: error.message || "Could not process recording. Please check server logs.",
-                                          variant: "destructive",
-                                        });
-                                      }
+                                    onClick={() => {
+                                      setSelectedCallForSummary({ 
+                                        id: call.id, 
+                                        calleeName: call.callee?.name || call.caller?.name || "Doctor" 
+                                      });
+                                      setSummaryConfirmDialogOpen(true);
                                     }}
                                     className="h-7 text-xs"
+                                    disabled={generateSummaryMutation.isPending}
                                   >
                                     <FileText className="h-3 w-3 mr-1" />
-                                    Generate Summary
+                                    {generateSummaryMutation.isPending && selectedCallForSummary?.id === call.id ? "Generating..." : "Generate Summary"}
                                   </Button>
                                 </div>
                               )}
@@ -1240,8 +1435,8 @@ export default function DoctorDashboard() {
                     <h2 className="text-3xl md:text-4xl font-bold mb-3">Settings</h2>
                     <p className="text-white/85 text-lg max-w-3xl">
                       Manage your account and profile preferences
-                    </p>
-                  </div>
+                  </p>
+                </div>
                 </section>
 
                 <section className="py-8 px-6 bg-background">
@@ -1338,8 +1533,8 @@ export default function DoctorDashboard() {
                       <p className="text-sm font-semibold text-muted-foreground mb-3">Short Bio</p>
                       <div className="p-4 bg-muted/50 rounded-lg">
                         <p className="text-base whitespace-pre-wrap leading-relaxed">
-                          {(user as DoctorWithProfile)?.doctorProfile?.shortBio || "Not set"}
-                        </p>
+                        {(user as DoctorWithProfile)?.doctorProfile?.shortBio || "Not set"}
+                      </p>
                       </div>
                     </div>
                   </CardContent>
@@ -1351,6 +1546,338 @@ export default function DoctorDashboard() {
           </main>
         </div>
       </div>
+
+      <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
+        <AlertDialogContent className="sm:max-w-[500px] p-0 gap-0 overflow-hidden">
+          <div className="bg-gradient-to-br from-red-50 via-orange-50 to-amber-50 dark:from-red-950/20 dark:via-orange-950/20 dark:to-amber-950/20 p-6 pb-4">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                <LogOut className="h-6 w-6 text-red-600 dark:text-red-400" />
+              </div>
+              <div className="flex-1 pt-1">
+                <AlertDialogTitle className="text-2xl font-bold text-gray-900 dark:text-gray-50 mb-2">
+                  Confirm Logout
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                  You're about to sign out of your account. All unsaved changes will be lost. You'll need to sign in again to access your dashboard.
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </div>
+          
+          <div className="px-6 py-4 bg-background">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="text-sm font-semibold text-primary">
+                  {user?.name?.charAt(0).toUpperCase() || 'U'}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">
+                  {user?.name || 'User'}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {user?.email || ''}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <AlertDialogFooter className="px-6 py-4 bg-muted/30 gap-3 sm:gap-3">
+            <AlertDialogCancel className="w-full sm:w-auto order-2 sm:order-1">
+              Stay Logged In
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={logout}
+              className="w-full sm:w-auto order-1 sm:order-2 bg-red-600 hover:bg-red-700 text-white shadow-sm hover:shadow-md transition-all duration-200 font-semibold"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Yes, Log Out
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* End Call Confirmation Dialog */}
+      <AlertDialog open={endCallConfirmDialogOpen} onOpenChange={(open) => {
+        console.log("Dialog onOpenChange:", open);
+        setEndCallConfirmDialogOpen(open);
+      }}>
+        <AlertDialogContent className="sm:max-w-[500px] p-0 gap-0 overflow-hidden z-[100]">
+          <div className="bg-gradient-to-br from-orange-50 via-red-50 to-amber-50 dark:from-orange-950/20 dark:via-red-950/20 dark:to-amber-950/20 p-6 pb-4">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                <PhoneOff className="h-6 w-6 text-orange-600 dark:text-orange-400" />
+              </div>
+              <div className="flex-1 pt-1">
+                <AlertDialogTitle className="text-2xl font-bold text-gray-900 dark:text-gray-50 mb-2">
+                  End Call?
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                  Are you sure you want to end this call? The call will be terminated and a summary will be generated automatically.
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </div>
+          
+          <div className="px-6 py-4 bg-background">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <Phone className="h-5 w-5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">
+                  {activeCall?.participantName || 'Unknown'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Active call in progress
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <AlertDialogFooter className="px-6 py-4 bg-muted/30 gap-3 sm:gap-3">
+            <AlertDialogCancel className="w-full sm:w-auto order-2 sm:order-1">
+              Continue Call
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={async (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                console.log("End Call button clicked in dialog, currentCallId:", currentCallId);
+                
+                if (currentCallId) {
+                  console.log("Calling endCallMutation with:", currentCallId);
+                  try {
+                    const result = await endCallMutation.mutateAsync(currentCallId);
+                    console.log("Call ended successfully, result:", result);
+                  } catch (error) {
+                    console.error("Error ending call:", error);
+                    // Still close dialog and clear state even on error
+                    setEndCallConfirmDialogOpen(false);
+                  }
+                } else {
+                  console.log("No currentCallId, clearing local state");
+                  setActiveCall(null);
+                  setCurrentCallId(null);
+                  setEndCallConfirmDialogOpen(false);
+                }
+              }}
+              className="w-full sm:w-auto order-1 sm:order-2 bg-orange-600 hover:bg-orange-700 text-white shadow-sm hover:shadow-md transition-all duration-200 font-semibold"
+              disabled={endCallMutation.isPending}
+              type="button"
+              autoFocus={false}
+            >
+              <PhoneOff className="h-4 w-4 mr-2" />
+              {endCallMutation.isPending ? "Ending..." : "End Call"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Clear Stale Calls Confirmation Dialog */}
+      <AlertDialog open={clearStaleCallsDialogOpen} onOpenChange={setClearStaleCallsDialogOpen}>
+        <AlertDialogContent className="sm:max-w-[500px] p-0 gap-0 overflow-hidden">
+          <div className="bg-gradient-to-br from-blue-50 via-indigo-50 to-purple-50 dark:from-blue-950/20 dark:via-indigo-950/20 dark:to-purple-950/20 p-6 pb-4">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center">
+                <RefreshCw className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              </div>
+              <div className="flex-1 pt-1">
+                <AlertDialogTitle className="text-2xl font-bold text-gray-900 dark:text-gray-50 mb-2">
+                  Clear Stale Calls?
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                  This will clear all inactive call records that may be preventing new calls. Only stale or completed calls will be removed.
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </div>
+
+          <AlertDialogFooter className="px-6 py-4 bg-muted/30 gap-3 sm:gap-3">
+            <AlertDialogCancel className="w-full sm:w-auto order-2 sm:order-1">
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                clearStaleCallsMutation.mutate();
+                setClearStaleCallsDialogOpen(false);
+              }}
+              className="w-full sm:w-auto order-1 sm:order-2 bg-blue-600 hover:bg-blue-700 text-white shadow-sm hover:shadow-md transition-all duration-200 font-semibold"
+              disabled={clearStaleCallsMutation.isPending}
+            >
+              <RefreshCw className={`h-4 w-4 mr-2 ${clearStaleCallsMutation.isPending ? "animate-spin" : ""}`} />
+              {clearStaleCallsMutation.isPending ? "Clearing..." : "Clear Stale Calls"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Initiate Call Confirmation Dialog */}
+      <AlertDialog open={callConfirmDialogOpen} onOpenChange={setCallConfirmDialogOpen}>
+        <AlertDialogContent className="sm:max-w-[500px] p-0 gap-0 overflow-hidden">
+          <div className="bg-gradient-to-br from-green-50 via-emerald-50 to-teal-50 dark:from-green-950/20 dark:via-emerald-950/20 dark:to-teal-950/20 p-6 pb-4">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                <Phone className="h-6 w-6 text-green-600 dark:text-green-400" />
+              </div>
+              <div className="flex-1 pt-1">
+                <AlertDialogTitle className="text-2xl font-bold text-gray-900 dark:text-gray-50 mb-2">
+                  Initiate Call?
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                  You're about to start a call with this doctor. Both of you will receive a phone call to connect. The call will be automatically recorded and transcribed.
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </div>
+          
+          <div className="px-6 py-4 bg-background">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="text-sm font-semibold text-primary">
+                  {selectedDoctorForCall?.name?.charAt(0).toUpperCase() || 'D'}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">
+                  {selectedDoctorForCall?.name || 'Doctor'}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {selectedDoctorForCall?.doctorProfile?.specialty || 'Specialist'}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <AlertDialogFooter className="px-6 py-4 bg-muted/30 gap-3 sm:gap-3">
+            <AlertDialogCancel className="w-full sm:w-auto order-2 sm:order-1" onClick={() => setSelectedDoctorForCall(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (selectedDoctorForCall) {
+                  initiateCallMutation.mutate(selectedDoctorForCall.id);
+                  setCallConfirmDialogOpen(false);
+                  setSelectedDoctorForCall(null);
+                }
+              }}
+              className="w-full sm:w-auto order-1 sm:order-2 bg-green-600 hover:bg-green-700 text-white shadow-sm hover:shadow-md transition-all duration-200 font-semibold"
+              disabled={initiateCallMutation.isPending}
+            >
+              <Phone className="h-4 w-4 mr-2" />
+              {initiateCallMutation.isPending ? "Connecting..." : "Start Call"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Generate Summary Confirmation Dialog */}
+      <AlertDialog open={summaryConfirmDialogOpen} onOpenChange={setSummaryConfirmDialogOpen}>
+        <AlertDialogContent className="sm:max-w-[500px] p-0 gap-0 overflow-hidden">
+          <div className="bg-gradient-to-br from-purple-50 via-violet-50 to-indigo-50 dark:from-purple-950/20 dark:via-violet-950/20 dark:to-indigo-950/20 p-6 pb-4">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-purple-100 dark:bg-purple-900/30 flex items-center justify-center">
+                <FileText className="h-6 w-6 text-purple-600 dark:text-purple-400" />
+              </div>
+              <div className="flex-1 pt-1">
+                <AlertDialogTitle className="text-2xl font-bold text-gray-900 dark:text-gray-50 mb-2">
+                  Generate AI Summary?
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                  This will process the call recording, generate a transcript, and create an AI-powered summary with key points and action items. This process may take a few minutes.
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </div>
+          
+          <div className="px-6 py-4 bg-background">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <FileText className="h-5 w-5 text-primary" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">
+                  Call with {selectedCallForSummary?.calleeName || 'Doctor'}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Summary will include transcript, key points, and action items
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <AlertDialogFooter className="px-6 py-4 bg-muted/30 gap-3 sm:gap-3">
+            <AlertDialogCancel className="w-full sm:w-auto order-2 sm:order-1" onClick={() => setSelectedCallForSummary(null)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (selectedCallForSummary) {
+                  generateSummaryMutation.mutate({ callId: selectedCallForSummary.id });
+                }
+              }}
+              className="w-full sm:w-auto order-1 sm:order-2 bg-purple-600 hover:bg-purple-700 text-white shadow-sm hover:shadow-md transition-all duration-200 font-semibold"
+              disabled={generateSummaryMutation.isPending}
+            >
+              <FileText className={`h-4 w-4 mr-2 ${generateSummaryMutation.isPending ? "animate-pulse" : ""}`} />
+              {generateSummaryMutation.isPending ? "Generating..." : "Generate Summary"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Summary Generation Error Dialog */}
+      <AlertDialog open={summaryErrorDialogOpen} onOpenChange={setSummaryErrorDialogOpen}>
+        <AlertDialogContent className="sm:max-w-[500px] p-0 gap-0 overflow-hidden">
+          <div className="bg-gradient-to-br from-red-50 via-rose-50 to-pink-50 dark:from-red-950/20 dark:via-rose-950/20 dark:to-pink-950/20 p-6 pb-4">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
+              </div>
+              <div className="flex-1 pt-1">
+                <AlertDialogTitle className="text-2xl font-bold text-gray-900 dark:text-gray-50 mb-2">
+                  Unable to Generate Summary
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                  {summaryError || "Something went wrong while generating the summary."}
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </div>
+          
+          <div className="px-6 py-4 bg-background">
+            <div className="p-4 rounded-lg bg-muted/30 border border-border border-dashed">
+              <div className="flex items-start gap-3">
+                <FileText className="h-5 w-5 text-muted-foreground mt-0.5 flex-shrink-0" />
+                <div className="flex-1">
+                  <p className="text-sm font-medium text-foreground mb-1">
+                    What you can do:
+                  </p>
+                  <ul className="text-sm text-muted-foreground space-y-1 list-disc list-inside">
+                    <li>Wait a few minutes and try again</li>
+                    <li>Check if the call was recorded</li>
+                    <li>Contact support if the issue persists</li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <AlertDialogFooter className="px-6 py-4 bg-muted/30 gap-3 sm:gap-3">
+            <AlertDialogAction
+              onClick={() => {
+                setSummaryErrorDialogOpen(false);
+                setSummaryError(null);
+              }}
+              className="w-full sm:w-auto bg-red-600 hover:bg-red-700 text-white shadow-sm hover:shadow-md transition-all duration-200 font-semibold"
+            >
+              <XCircle className="h-4 w-4 mr-2" />
+              Close
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <EditDoctorProfileDialog
         open={editProfileDialogOpen}

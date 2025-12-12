@@ -146,6 +146,13 @@ export async function registerRoutes(
 
   // Initialize Twilio
   let twilioClient = null;
+  
+  // Debug: Check environment variables at routes registration time
+  console.log("\n=== Twilio Initialization (routes.ts) ===");
+  console.log(`  process.env.TWILIO_ACCOUNT_SID: ${process.env.TWILIO_ACCOUNT_SID ? `${process.env.TWILIO_ACCOUNT_SID.substring(0, 4)}...` : 'NOT SET'}`);
+  console.log(`  process.env.TWILIO_AUTH_TOKEN: ${process.env.TWILIO_AUTH_TOKEN ? 'SET' : 'NOT SET'}`);
+  console.log(`  All env vars starting with TWILIO:`, Object.keys(process.env).filter(k => k.startsWith('TWILIO')));
+  
   const accountSid = process.env.TWILIO_ACCOUNT_SID;
   const authToken = process.env.TWILIO_AUTH_TOKEN;
   
@@ -164,19 +171,8 @@ export async function registerRoutes(
       twilioClient = null;
     }
   } else {
-    console.log("✗ Twilio client NOT initialized:");
-    if (!accountSid || accountSid === 'your-twilio-account-sid') {
-      console.log(`  TWILIO_ACCOUNT_SID: NOT SET or using placeholder`);
-    } else if (!accountSid.startsWith('AC')) {
-      console.log(`  TWILIO_ACCOUNT_SID: Invalid format (must start with 'AC')`);
-    } else {
-      console.log(`  TWILIO_ACCOUNT_SID: SET`);
-    }
-    if (!authToken || authToken === 'your-twilio-auth-token') {
-      console.log(`  TWILIO_AUTH_TOKEN: NOT SET or using placeholder`);
-    } else {
-      console.log(`  TWILIO_AUTH_TOKEN: SET`);
-    }
+    // Twilio initialization skipped - feature is optional
+    twilioClient = null;
   }
 
   // =====================
@@ -496,7 +492,7 @@ export async function registerRoutes(
       return res.status(401).json({ message: "Not authenticated" });
     }
     try {
-      const { name, phoneNumber, demographics, specialty, city, education, experience, institution, languages, shortBio, linkedinUrl } = req.body;
+      const { name, phoneNumber, demographics, specialty, city, education, experience, institution, languages, shortBio, linkedinUrl, showMatchPercentage } = req.body;
       
       // Update user name if provided
       if (name !== undefined && name !== null) {
@@ -519,6 +515,9 @@ export async function registerRoutes(
           } else {
             profileUpdates.demographics = demographics;
           }
+        }
+        if (showMatchPercentage !== undefined) {
+          profileUpdates.showMatchPercentage = showMatchPercentage === true || showMatchPercentage === 1;
         }
         if (Object.keys(profileUpdates).length > 0) {
           await storage.updatePatientProfile(req.user!.id, profileUpdates);
@@ -576,6 +575,62 @@ export async function registerRoutes(
       res.json(patients);
     } catch (error) {
       console.error("Error fetching patients:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/patient/matches", requireRole("PATIENT"), async (req, res) => {
+    try {
+      const currentUser = await storage.getUserWithProfile(req.user!.id);
+      if (!currentUser || !currentUser.patientProfile) {
+        return res.status(404).json({ message: "Patient profile not found" });
+      }
+
+      // Check if current user has consented to show match percentages
+      if (!currentUser.patientProfile.showMatchPercentage) {
+        return res.status(403).json({ 
+          message: "You must enable match percentages in your settings to view matches" 
+        });
+      }
+
+      // Get all available patients
+      const allPatients = await storage.getAvailablePatients(req.user!.id);
+      
+      // Calculate matches for each patient
+      const matches = [];
+      for (const patient of allPatients) {
+        if (!patient.patientProfile) continue;
+        
+        // Only show match if the other patient has also consented
+        if (!patient.patientProfile.showMatchPercentage) continue;
+        
+        // Only match patients with the same procedure type
+        const currentProcedure = currentUser.patientProfile.demographics?.procedure;
+        const patientProcedure = patient.patientProfile.demographics?.procedure;
+        
+        if (!currentProcedure || !patientProcedure || currentProcedure !== patientProcedure) {
+          continue; // Skip if different procedures
+        }
+        
+        // Calculate match percentage
+        const { calculateMatchPercentage } = await import("./utils/patient-matching");
+        const matchPercentage = calculateMatchPercentage(
+          currentUser.patientProfile,
+          patient.patientProfile
+        );
+        
+        matches.push({
+          ...patient,
+          matchPercentage,
+        });
+      }
+      
+      // Sort by match percentage (highest first)
+      matches.sort((a, b) => (b.matchPercentage || 0) - (a.matchPercentage || 0));
+      
+      res.json(matches);
+    } catch (error) {
+      console.error("Error fetching matches:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -2091,17 +2146,19 @@ export async function registerRoutes(
       const now = new Date();
       const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
       const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
+      const twoMinutesAgo = new Date(now.getTime() - 2 * 60 * 1000);
       
       // Clean up stale calls for caller - be more aggressive
-      const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
-      const fifteenMinutesAgo = new Date(now.getTime() - 15 * 60 * 1000);
       const callerAllCalls = await storage.getCallsForDoctor(req.user!.id);
       for (const call of callerAllCalls) {
         if (!call.endedAt && call.startedAt) {
           const startedAt = new Date(call.startedAt);
-          // Clean up: calls older than 2 hours OR non-live calls older than 30 minutes OR 
-          // live calls older than 30 minutes (likely stale - real calls don't last that long without ending)
+          // Clean up: calls older than 2 hours OR 
+          // non-live calls older than 2 minutes (if not live, it should have ended quickly) OR
+          // non-live calls older than 30 minutes (catch-all) OR
+          // live calls older than 30 minutes (likely stale)
           if (startedAt < twoHoursAgo || 
+              (!call.isLive && startedAt < twoMinutesAgo) ||
               (!call.isLive && startedAt < thirtyMinutesAgo) || 
               (call.isLive && startedAt < thirtyMinutesAgo)) {
             try {
@@ -2122,9 +2179,12 @@ export async function registerRoutes(
       for (const call of calleeAllCalls) {
         if (!call.endedAt && call.startedAt) {
           const startedAt = new Date(call.startedAt);
-          // Clean up: calls older than 2 hours OR non-live calls older than 30 minutes OR 
-          // live calls older than 30 minutes (likely stale - real calls don't last that long without ending)
+          // Clean up: calls older than 2 hours OR 
+          // non-live calls older than 2 minutes (if not live, it should have ended quickly) OR
+          // non-live calls older than 30 minutes (catch-all) OR
+          // live calls older than 30 minutes (likely stale)
           if (startedAt < twoHoursAgo || 
+              (!call.isLive && startedAt < twoMinutesAgo) ||
               (!call.isLive && startedAt < thirtyMinutesAgo) || 
               (call.isLive && startedAt < thirtyMinutesAgo)) {
             try {
@@ -2149,18 +2209,23 @@ export async function registerRoutes(
       // 2. It was started very recently (within last 5 minutes) and not ended (to catch calls in progress)
       const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
       
-      // More strict: only consider calls active if they're live AND started within 5 minutes, or any call started within 2 minutes (connecting)
-      const twoMinutesAgo = new Date(now.getTime() - 2 * 60 * 1000);
+      // More strict: only consider calls active if they're live AND started within 5 minutes, or live calls started within 2 minutes (connecting)
+      // Note: twoMinutesAgo is already declared above in the cleanup section
       // Use 4 minutes 30 seconds to be more aggressive (calls older than 4.5 min are considered stale)
       const fourAndHalfMinutesAgo = new Date(now.getTime() - 4.5 * 60 * 1000);
+      // For non-live calls, only consider them active if started within 30 seconds (very recent, might be connecting)
+      const thirtySecondsAgo = new Date(now.getTime() - 30 * 1000);
       
       const callerInCall = await (async () => {
         for (const c of callerActiveCalls) {
           if (c.endedAt) continue;
           if (!c.startedAt) continue;
           const startedAt = new Date(c.startedAt);
-          // Only consider truly active: live calls started within 4.5 min, or any call started within 2 min (connecting)
-          const isActive = (c.isLive && startedAt > fourAndHalfMinutesAgo) || (startedAt > twoMinutesAgo);
+          // Only consider truly active: 
+          // - Live calls started within 4.5 min, OR
+          // - Non-live calls started within 30 seconds (very recent, might be connecting)
+          // Non-live calls older than 30 seconds are considered stale
+          const isActive = (c.isLive && startedAt > fourAndHalfMinutesAgo) || (!c.isLive && startedAt > thirtySecondsAgo);
           
           if (isActive) {
             // For calls that are marked as live, verify with Twilio if they're actually still active
@@ -2270,8 +2335,11 @@ export async function registerRoutes(
           if (c.endedAt) continue;
           if (!c.startedAt) continue;
           const startedAt = new Date(c.startedAt);
-          // Only consider truly active: live calls started within 4.5 min, or any call started within 2 min (connecting)
-          const isActive = (c.isLive && startedAt > fourAndHalfMinutesAgo) || (startedAt > twoMinutesAgo);
+          // Only consider truly active: 
+          // - Live calls started within 4.5 min, OR
+          // - Non-live calls started within 30 seconds (very recent, might be connecting)
+          // Non-live calls older than 30 seconds are considered stale
+          const isActive = (c.isLive && startedAt > fourAndHalfMinutesAgo) || (!c.isLive && startedAt > thirtySecondsAgo);
           
           if (isActive) {
             // For calls that are marked as live, verify with Twilio if they're actually still active
@@ -2459,20 +2527,29 @@ export async function registerRoutes(
 
       // Initiate Twilio call
       if (!twilioClient) {
-        console.log("Twilio client not initialized. Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN");
-        return res.status(400).json({ 
-          ...call, 
-          mock: true,
-          message: "Twilio not configured. Please set TWILIO_ACCOUNT_SID and TWILIO_AUTH_TOKEN environment variables." 
+        // Debug: Check if env vars are actually set
+        const hasAccountSid = !!process.env.TWILIO_ACCOUNT_SID;
+        const hasAuthToken = !!process.env.TWILIO_AUTH_TOKEN;
+        const accountSidValue = process.env.TWILIO_ACCOUNT_SID ? `${process.env.TWILIO_ACCOUNT_SID.substring(0, 4)}...` : 'NOT SET';
+        
+        console.log("Twilio client not initialized.");
+        console.log(`  TWILIO_ACCOUNT_SID: ${hasAccountSid ? accountSidValue : 'NOT SET'}`);
+        console.log(`  TWILIO_AUTH_TOKEN: ${hasAuthToken ? 'SET' : 'NOT SET'}`);
+        console.log(`  AccountSid starts with AC: ${process.env.TWILIO_ACCOUNT_SID?.startsWith('AC')}`);
+        
+        return res.status(503).json({ 
+          error: "Service Unavailable",
+          message: "Call service is not configured. Please contact your administrator to set up Twilio integration.",
+          details: "Twilio not configured. Missing TWILIO_ACCOUNT_SID or TWILIO_AUTH_TOKEN environment variables."
         });
       }
 
       if (!process.env.TWILIO_PHONE_NUMBER) {
         console.log("TWILIO_PHONE_NUMBER not set");
-        return res.status(400).json({ 
-          ...call, 
-          mock: true,
-          message: "Twilio phone number not configured. Please set TWILIO_PHONE_NUMBER environment variable." 
+        return res.status(503).json({ 
+          error: "Service Unavailable",
+          message: "Call service is not configured. Please contact your administrator to set up Twilio phone number.",
+          details: "TWILIO_PHONE_NUMBER environment variable is not set."
         });
       }
 
@@ -2639,6 +2716,80 @@ export async function registerRoutes(
         summaryText = `Call completed. Duration: ${callDuration ? `${Math.floor(callDuration / 60)} minutes` : 'N/A'}.`;
       }
       
+      // Hangup Twilio calls if call is still active
+      if (twilioClient && call.twilioCallSid && call.isLive) {
+        try {
+          const conferenceName = call.twilioCallSid;
+          
+          // If it's a conference call, get all participants and hangup each one
+          if (conferenceName.startsWith('doctor-call-')) {
+            try {
+              const participants = await twilioClient.conferences(conferenceName).participants.list();
+              
+              // Hangup all participants
+              for (const participant of participants) {
+                try {
+                  await twilioClient.calls(participant.callSid).update({ status: 'completed' });
+                  console.log(`Hung up call ${participant.callSid} from conference ${conferenceName}`);
+                } catch (err: any) {
+                  console.error(`Error hanging up call ${participant.callSid}:`, err.message);
+                }
+              }
+              
+              // Also try to update the conference to end it
+              try {
+                await twilioClient.conferences(conferenceName).update({ status: 'completed' });
+                console.log(`Ended conference ${conferenceName}`);
+              } catch (confErr: any) {
+                // Conference might not support status update, that's okay
+                console.log(`Note: Could not update conference status (this is often normal):`, confErr.message);
+              }
+            } catch (confListErr: any) {
+              // Conference might not exist or already ended, that's okay
+              console.log(`Conference ${conferenceName} may already be ended:`, confListErr.message);
+              
+              // Try to find and hangup calls by SID if we can find them
+              // This is a fallback if conference lookup fails
+              try {
+                const recentCalls = await twilioClient.calls.list({ limit: 50 });
+                const relevantCalls = recentCalls.filter(c => {
+                  // Filter calls that might belong to this conference based on timing
+                  if (!c.dateCreated || !call.startedAt) return false;
+                  const callTime = new Date(c.dateCreated).getTime();
+                  const startTime = new Date(call.startedAt).getTime();
+                  return Math.abs(callTime - startTime) < 60000; // Within 1 minute
+                });
+                
+                // Hangup active calls
+                for (const twilioCall of relevantCalls) {
+                  if (twilioCall.status === 'in-progress' || twilioCall.status === 'ringing') {
+                    try {
+                      await twilioClient.calls(twilioCall.sid).update({ status: 'completed' });
+                      console.log(`Hung up call ${twilioCall.sid} (fallback method)`);
+                    } catch (err: any) {
+                      console.error(`Error hanging up call ${twilioCall.sid}:`, err.message);
+                    }
+                  }
+                }
+              } catch (fallbackErr: any) {
+                console.error(`Fallback call hangup failed:`, fallbackErr.message);
+              }
+            }
+          } else {
+            // If it's a direct call SID, hang it up directly
+            try {
+              await twilioClient.calls(call.twilioCallSid).update({ status: 'completed' });
+              console.log(`Hung up call ${call.twilioCallSid}`);
+            } catch (err: any) {
+              console.error(`Error hanging up call ${call.twilioCallSid}:`, err.message);
+            }
+          }
+        } catch (twilioErr: any) {
+          // Log error but don't fail the request - we'll still mark call as ended in DB
+          console.error(`Error hanging up Twilio call for ${callId}:`, twilioErr.message);
+        }
+      }
+      
       // Update call to mark it as ended
       const updated = await storage.updateDoctorCall(callId, {
         isLive: false,
@@ -2750,6 +2901,7 @@ export async function registerRoutes(
       const twoHoursAgo = new Date(now.getTime() - 2 * 60 * 60 * 1000);
       const thirtyMinutesAgo = new Date(now.getTime() - 30 * 60 * 1000);
       const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000); // 5 minutes for live calls
+      const twoMinutesAgo = new Date(now.getTime() - 2 * 60 * 1000); // 2 minutes for non-live calls
       
       let clearedCount = 0;
       for (const call of calls) {
@@ -2759,11 +2911,13 @@ export async function registerRoutes(
           
           // Clear calls that are:
           // 1. Older than 2 hours (any status)
-          // 2. Not live and older than 30 minutes
-          // 3. Live and 5 minutes or older (likely disconnected but not properly ended)
-          // Use <= to catch calls that are exactly 5 minutes old
+          // 2. Not live and older than 2 minutes (non-live calls should end quickly)
+          // 3. Not live and older than 30 minutes (catch-all)
+          // 4. Live and 5 minutes or older (likely disconnected but not properly ended)
+          // Use <= to catch calls that are exactly at the threshold
           const shouldClear = 
             startedAt <= twoHoursAgo || 
+            (!call.isLive && startedAt <= twoMinutesAgo) ||
             (!call.isLive && startedAt <= thirtyMinutesAgo) ||
             (call.isLive && startedAt <= fiveMinutesAgo);
           
@@ -3221,14 +3375,16 @@ export async function registerRoutes(
         return res.status(403).json({ message: "You are not authorized to process this call" });
       }
 
-      // Get recording URL from Twilio if recordingSid is provided
+      // Get recording URL from Twilio
       let actualRecordingUrl = recordingUrl;
+      
+      // If recordingSid is provided, fetch the URL
       if (!actualRecordingUrl && recordingSid && twilioClient) {
         try {
           const recording = await twilioClient.recordings(recordingSid).fetch();
           // Get MP3 URL for Assembly AI
           actualRecordingUrl = `https://api.twilio.com${recording.uri.replace('.json', '.mp3')}`;
-          console.log(`Fetched recording URL from Twilio: ${actualRecordingUrl}`);
+          console.log(`Fetched recording URL from Twilio using recordingSid: ${actualRecordingUrl}`);
         } catch (error: any) {
           return res.status(400).json({ 
             message: "Failed to fetch recording from Twilio", 
@@ -3236,9 +3392,94 @@ export async function registerRoutes(
           });
         }
       }
+      
+      // If no recording URL/SID provided, try to find recording automatically from Twilio
+      if (!actualRecordingUrl && twilioClient && call.startedAt) {
+        try {
+          console.log(`[${callId}] Attempting to find recording automatically from Twilio...`);
+          
+          // Method 1: If we have a conference name, try to find recordings by conference
+          if (call.twilioCallSid && call.twilioCallSid.startsWith('doctor-call-')) {
+            try {
+              // Fetch recordings and look for ones associated with this conference
+              const callStartTime = new Date(call.startedAt);
+              const oneHourBefore = new Date(callStartTime.getTime() - 60 * 60 * 1000);
+              const oneHourAfter = new Date(callStartTime.getTime() + 60 * 60 * 1000);
+              
+              const recordings = await twilioClient.recordings.list({
+                dateCreatedAfter: oneHourBefore,
+                dateCreatedBefore: oneHourAfter,
+                limit: 50,
+              });
+              
+              // Filter recordings by time proximity to call start (within 10 minutes)
+              const matchingRecordings = recordings.filter(r => {
+                if (!r.dateCreated || r.status !== 'completed') return false;
+                const recordingTime = new Date(r.dateCreated).getTime();
+                const callStartTimeMs = callStartTime.getTime();
+                return Math.abs(recordingTime - callStartTimeMs) < 10 * 60 * 1000;
+              });
+              
+              if (matchingRecordings.length > 0) {
+                // Get the most recent matching recording
+                const latestRecording = matchingRecordings.sort((a, b) => 
+                  new Date(b.dateCreated!).getTime() - new Date(a.dateCreated!).getTime()
+                )[0];
+                
+                actualRecordingUrl = `https://api.twilio.com${latestRecording.uri.replace('.json', '.mp3')}`;
+                console.log(`[${callId}] Found recording automatically by timeframe: ${latestRecording.sid} at ${actualRecordingUrl}`);
+              }
+            } catch (confError: any) {
+              console.error(`[${callId}] Error searching recordings by conference:`, confError.message);
+            }
+          }
+          
+          // Method 2: If still not found, search by call start time
+          if (!actualRecordingUrl) {
+            try {
+              const callStartTime = new Date(call.startedAt);
+              const oneHourBefore = new Date(callStartTime.getTime() - 60 * 60 * 1000);
+              const oneHourAfter = new Date(callStartTime.getTime() + 60 * 60 * 1000);
+              
+              const recordings = await twilioClient.recordings.list({
+                dateCreatedAfter: oneHourBefore,
+                dateCreatedBefore: oneHourAfter,
+                limit: 20,
+              });
+              
+              // Find recordings that match the call timeframe (within 10 minutes)
+              const matchingRecordings = recordings.filter(r => {
+                if (!r.dateCreated || r.status !== 'completed') return false;
+                const recordingTime = new Date(r.dateCreated).getTime();
+                const callStartTimeMs = callStartTime.getTime();
+                return Math.abs(recordingTime - callStartTimeMs) < 10 * 60 * 1000;
+              });
+              
+              if (matchingRecordings.length > 0) {
+                const latestRecording = matchingRecordings.sort((a, b) => 
+                  new Date(b.dateCreated!).getTime() - new Date(a.dateCreated!).getTime()
+                )[0];
+                
+                actualRecordingUrl = `https://api.twilio.com${latestRecording.uri.replace('.json', '.mp3')}`;
+                console.log(`[${callId}] Found recording automatically by timeframe: ${latestRecording.sid} at ${actualRecordingUrl}`);
+              } else {
+                console.log(`[${callId}] No recordings found for this call timeframe`);
+              }
+            } catch (timeError: any) {
+              console.error(`[${callId}] Error finding recording by time:`, timeError.message);
+            }
+          }
+        } catch (error: any) {
+          console.error(`[${callId}] Error finding recording automatically:`, error.message);
+          // Continue to error response below
+        }
+      }
 
       if (!actualRecordingUrl) {
-        return res.status(400).json({ message: "Recording URL or RecordingSid is required" });
+        return res.status(400).json({ 
+          message: "No recording found for this call. Please ensure the call was recorded and try again, or provide a RecordingSid.",
+          details: "The call may not have been recorded, or the recording may not be available yet. Try again in a few minutes."
+        });
       }
 
       // Process recording in background (don't wait for completion)

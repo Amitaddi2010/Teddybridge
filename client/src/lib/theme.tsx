@@ -33,14 +33,14 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     root.classList.add(effectiveTheme);
     // Only save theme preference if on dashboard
     if (isDashboard) {
-      localStorage.setItem("teddybridge-theme", theme);
+    localStorage.setItem("teddybridge-theme", theme);
     }
   }, [effectiveTheme, theme, isDashboard]);
 
   const toggleTheme = () => {
     // Only allow theme toggle on dashboard pages
     if (isDashboard) {
-      setTheme(theme === "light" ? "dark" : "light");
+    setTheme(theme === "light" ? "dark" : "light");
     }
   };
 

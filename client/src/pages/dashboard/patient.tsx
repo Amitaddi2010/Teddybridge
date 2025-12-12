@@ -1,9 +1,21 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import {
   Sidebar,
   SidebarContent,
@@ -44,11 +56,12 @@ import {
   User as UserIcon,
   Edit,
   Settings,
-  Loader2
+  Loader2,
+  Target
 } from "lucide-react";
 import type { User, PatientProfile, PatientConnection, SurveyRequest } from "@shared/schema";
 
-type PatientWithProfile = User & { patientProfile?: PatientProfile | null };
+type PatientWithProfile = User & { patientProfile?: PatientProfile | null; matchPercentage?: number };
 type ConnectionWithUsers = PatientConnection & { 
   requester?: User | null; 
   target?: User | null;
@@ -66,9 +79,23 @@ export default function PatientDashboard() {
   const [expandedSurveys, setExpandedSurveys] = useState<Set<string>>(new Set());
   const [loadingSurveyIframes, setLoadingSurveyIframes] = useState<Set<string>>(new Set());
   const [editProfileDialogOpen, setEditProfileDialogOpen] = useState(false);
+  const [logoutDialogOpen, setLogoutDialogOpen] = useState(false);
+  const [localMatchPercentage, setLocalMatchPercentage] = React.useState<boolean | null>(null);
+
+  // Sync local state with user data
+  React.useEffect(() => {
+    if (user?.patientProfile?.showMatchPercentage !== undefined) {
+      setLocalMatchPercentage(!!user.patientProfile.showMatchPercentage);
+    }
+  }, [user?.patientProfile?.showMatchPercentage]);
 
   const { data: patients, isLoading: loadingPatients } = useQuery<PatientWithProfile[]>({
     queryKey: ["/api/patient/available"],
+  });
+
+  const { data: matches, isLoading: loadingMatches } = useQuery<(PatientWithProfile & { matchPercentage?: number })[]>({
+    queryKey: ["/api/patient/matches"],
+    enabled: (localMatchPercentage ?? !!user?.patientProfile?.showMatchPercentage) === true, // Only fetch if user has consented
   });
 
   const { data: connections, isLoading: loadingConnections } = useQuery<ConnectionWithUsers[]>({
@@ -94,12 +121,15 @@ export default function PatientDashboard() {
         gender?: string;
         procedure?: string;
       };
+      showMatchPercentage?: boolean;
     }) => {
       return apiRequest("PUT", "/api/user/profile", data);
     },
     onSuccess: async () => {
       await refreshUser();
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/patient/matches"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/patient/available"] });
       setEditProfileDialogOpen(false);
       toast({
         title: "Profile updated!",
@@ -109,6 +139,43 @@ export default function PatientDashboard() {
     onError: (error) => {
       toast({
         title: "Failed to update profile",
+        description: error instanceof Error ? error.message : "Something went wrong",
+        variant: "destructive",
+      });
+    },
+  });
+
+  const updateMatchPercentageMutation = useMutation({
+    mutationFn: async (showMatchPercentage: boolean) => {
+      const response = await apiRequest("PUT", "/api/user/profile", { showMatchPercentage });
+      return response.json();
+    },
+    onSuccess: async (data, variables) => {
+      // Refresh user data from server
+      await refreshUser();
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      // If enabled, refetch matches immediately
+      if (variables) {
+        queryClient.invalidateQueries({ queryKey: ["/api/patient/matches"] });
+        // Force refetch if query is now enabled
+        await queryClient.refetchQueries({ queryKey: ["/api/patient/matches"] });
+      } else {
+        // If disabled, remove matches from cache
+        queryClient.removeQueries({ queryKey: ["/api/patient/matches"] });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/patient/available"] });
+      toast({
+        title: variables ? "Match percentages enabled" : "Match percentages disabled",
+        description: variables 
+          ? "Other patients can now see match percentages with you (if they also consent)."
+          : "Match percentages are now hidden from other patients.",
+      });
+    },
+    onError: (error, variables) => {
+      // Revert local state on error
+      setLocalMatchPercentage(!variables);
+      toast({
+        title: "Failed to update setting",
         description: error instanceof Error ? error.message : "Something went wrong",
         variant: "destructive",
       });
@@ -234,10 +301,21 @@ export default function PatientDashboard() {
 
   const scheduledMeetings = confirmedConnections.filter(c => c.scheduledAt);
 
-  const filteredPatients = patients?.filter(p => 
+  // Use matches if available and user has consented, otherwise use regular patients list
+  const patientsToShow = (user?.patientProfile?.showMatchPercentage && matches) ? matches : patients;
+  
+  const filteredPatients = patientsToShow?.filter(p => 
     p.id !== user?.id && 
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   ) || [];
+  
+  // Sort by match percentage if available (highest first)
+  const sortedPatients = [...filteredPatients].sort((a, b) => {
+    if (a.matchPercentage !== undefined && b.matchPercentage !== undefined) {
+      return b.matchPercentage - a.matchPercentage;
+    }
+    return 0;
+  });
 
   const getConnectionForPatient = (patientId: string) => {
     return connections?.find(
@@ -276,7 +354,7 @@ export default function PatientDashboard() {
         <Sidebar className="border-r">
           <SidebarContent className="gap-0">
             <SidebarGroup className="px-4 py-6 border-b">
-              <Logo size="md" />
+          <Logo size="md" />
             </SidebarGroup>
             
             <SidebarGroup className="px-2 py-4">
@@ -322,7 +400,7 @@ export default function PatientDashboard() {
                 <SidebarMenu>
                   <SidebarMenuItem>
                     <SidebarMenuButton 
-                      onClick={logout} 
+                      onClick={() => setLogoutDialogOpen(true)} 
                       data-testid="button-logout"
                       className="w-full justify-start gap-3 px-3 py-2.5 rounded-lg transition-colors hover:bg-destructive/10 hover:text-destructive text-muted-foreground"
                     >
@@ -349,7 +427,7 @@ export default function PatientDashboard() {
               </h1>
             </div>
             <ThemeToggle />
-          </header>
+      </header>
 
           <main className="flex-1 overflow-auto bg-background">
             {activeTab === "dashboard" && (
@@ -363,8 +441,8 @@ export default function PatientDashboard() {
                       </h1>
                       <p className="text-lg md:text-xl text-white/85 max-w-3xl">
                         We help patients find, connect, and support each other through their healthcare journey. One platform to unify your entire peer support workflow.
-                      </p>
-                    </div>
+            </p>
+          </div>
                     <Button 
                       onClick={() => setInviteDialogOpen(true)} 
                       size="lg"
@@ -373,14 +451,14 @@ export default function PatientDashboard() {
                     >
                       <UserPlus className="h-5 w-5 mr-2" />
                       Invite a Peer
-                    </Button>
-                  </div>
+          </Button>
+        </div>
                 </section>
 
                 {/* Stats Cards */}
                 <section className="py-16 px-6 bg-background">
                   <div className="max-w-7xl mx-auto">
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                       <Card className="border-2">
                         <CardContent className="p-6">
                       <div className="flex items-center justify-between">
@@ -469,13 +547,29 @@ export default function PatientDashboard() {
                       </Button>
             </div>
 
-            {loadingPatients ? (
+            {(localMatchPercentage ?? !!user?.patientProfile?.showMatchPercentage) && matches && matches.length > 0 && (
+              <div className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-lg border">
+                <p className="flex items-center gap-2">
+                  <Target className="h-4 w-4" />
+                  Match percentages are shown for patients with the same procedure type. Both parties must consent to view matches.
+                </p>
+              </div>
+            )}
+            {!(localMatchPercentage ?? !!user?.patientProfile?.showMatchPercentage) && (
+              <div className="text-sm text-muted-foreground bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                <p>
+                  Enable match percentages in your <strong>Settings</strong> to see compatibility scores with other patients.
+                </p>
+              </div>
+            )}
+
+            {loadingPatients || ((localMatchPercentage ?? !!user?.patientProfile?.showMatchPercentage) && loadingMatches) ? (
               <div className="grid md:grid-cols-2 gap-4">
                 {[1, 2, 3, 4].map(i => (
                   <Skeleton key={i} className="h-24" />
                 ))}
               </div>
-            ) : filteredPatients.length === 0 ? (
+            ) : sortedPatients.length === 0 ? (
               <Card>
                 <CardContent className="py-12 text-center">
                   <Users className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
@@ -493,7 +587,7 @@ export default function PatientDashboard() {
               </Card>
             ) : (
               <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {filteredPatients.map(patient => (
+                {sortedPatients.map(patient => (
                   <PatientCard
                     key={patient.id}
                     patient={patient}
@@ -525,9 +619,9 @@ export default function PatientDashboard() {
                   <div className="max-w-7xl mx-auto">
                     <h2 className="text-3xl md:text-4xl font-bold mb-3">My Connections</h2>
                     <p className="text-white/85 text-lg max-w-3xl">
-                      Manage your peer connections and requests
-                    </p>
-                  </div>
+                    Manage your peer connections and requests
+                  </p>
+                </div>
                 </section>
 
                 <section className="py-8 px-6 bg-background">
@@ -657,9 +751,9 @@ export default function PatientDashboard() {
                   <div className="max-w-7xl mx-auto">
                     <h2 className="text-3xl md:text-4xl font-bold mb-3">My Doctors</h2>
                     <p className="text-white/85 text-lg max-w-3xl">
-                      Doctors you've linked with via QR code
-                    </p>
-                  </div>
+                    Doctors you've linked with via QR code
+                  </p>
+                </div>
                 </section>
 
                 <section className="py-8 px-6 bg-background">
@@ -717,7 +811,7 @@ export default function PatientDashboard() {
               )}
                   </div>
                 </section>
-              </div>
+            </div>
             )}
 
             {activeTab === "surveys" && (
@@ -727,9 +821,9 @@ export default function PatientDashboard() {
                   <div className="max-w-7xl mx-auto">
                     <h2 className="text-3xl md:text-4xl font-bold mb-3">Surveys</h2>
                     <p className="text-white/85 text-lg max-w-3xl">
-                      Complete surveys sent by your doctors to track your health outcomes
-                    </p>
-                  </div>
+                    Complete surveys sent by your doctors to track your health outcomes
+                  </p>
+                </div>
                 </section>
 
                 <section className="py-8 px-6 bg-background">
@@ -892,7 +986,7 @@ export default function PatientDashboard() {
               )}
                   </div>
                 </section>
-              </div>
+            </div>
             )}
 
             {activeTab === "meetings" && (
@@ -902,11 +996,11 @@ export default function PatientDashboard() {
                   <div className="max-w-7xl mx-auto">
                     <h2 className="text-3xl md:text-4xl font-bold mb-3">Scheduled Meetings</h2>
                     <p className="text-white/85 text-lg max-w-3xl">
-                      Your upcoming peer-to-peer calls
-                    </p>
-                  </div>
+                    Your upcoming peer-to-peer calls
+                  </p>
+                </div>
                 </section>
-
+                
                 <section className="py-8 px-6 bg-background">
                   <div className="max-w-7xl mx-auto space-y-6">
               {scheduledMeetings.length === 0 ? (
@@ -940,7 +1034,7 @@ export default function PatientDashboard() {
               )}
                   </div>
                 </section>
-              </div>
+            </div>
             )}
 
             {activeTab === "settings" && (
@@ -950,9 +1044,9 @@ export default function PatientDashboard() {
                   <div className="max-w-7xl mx-auto">
                     <h2 className="text-3xl md:text-4xl font-bold mb-3">Settings</h2>
                     <p className="text-white/85 text-lg max-w-3xl">
-                      Manage your account and preferences
-                    </p>
-                  </div>
+                    Manage your account and preferences
+                  </p>
+                </div>
                 </section>
 
                 <section className="py-8 px-6 bg-background">
@@ -961,7 +1055,7 @@ export default function PatientDashboard() {
                   <CardHeader>
                     <div className="flex items-center justify-between">
                       <div>
-                        <CardTitle>Profile Information</CardTitle>
+                      <CardTitle>Profile Information</CardTitle>
                         <CardDescription>
                           View and edit your profile details
                         </CardDescription>
@@ -1039,6 +1133,52 @@ export default function PatientDashboard() {
                     )}
                   </CardContent>
                 </Card>
+
+                <Card className="border-2">
+                  <CardHeader>
+                    <CardTitle>Match Percentages</CardTitle>
+                    <CardDescription>
+                      Control your match percentage visibility with other patients
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="flex items-center justify-between p-4 border rounded-lg bg-muted/50">
+                      <div className="space-y-0.5 flex-1">
+                        <Label htmlFor="match-percentage-settings" className="text-base font-semibold">
+                          Show Match Percentages
+                        </Label>
+                        <p className="text-sm text-muted-foreground">
+                          Allow other patients to see match percentages with you. Both parties must consent to view matches.
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-2">
+                          Match percentages are calculated based on procedure type, age similarity, and gender (if provided).
+                        </p>
+                      </div>
+                      <Switch
+                        id="match-percentage-settings"
+                        checked={localMatchPercentage ?? !!user?.patientProfile?.showMatchPercentage}
+                        onCheckedChange={(checked) => {
+                          // Update local state immediately for instant feedback
+                          setLocalMatchPercentage(checked);
+                          // Send to server
+                          updateMatchPercentageMutation.mutate(checked);
+                        }}
+                        disabled={updateMatchPercentageMutation.isPending}
+                        data-testid="switch-match-percentage-settings"
+                      />
+                    </div>
+                    {(localMatchPercentage ?? !!user?.patientProfile?.showMatchPercentage) && (
+                      <div className="text-sm text-muted-foreground bg-blue-50 dark:bg-blue-950/20 p-3 rounded-lg border border-blue-200 dark:border-blue-800">
+                        <p className="flex items-start gap-2">
+                          <Target className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                          <span>
+                            Match percentages are enabled. You can see compatibility scores with other consenting patients who have the same procedure type.
+                          </span>
+                        </p>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
                   </div>
                 </section>
               </div>
@@ -1053,6 +1193,57 @@ export default function PatientDashboard() {
         onSubmit={(email) => sendInviteMutation.mutate(email)}
         isLoading={sendInviteMutation.isPending}
       />
+
+      <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
+        <AlertDialogContent className="sm:max-w-[500px] p-0 gap-0 overflow-hidden">
+          <div className="bg-gradient-to-br from-red-50 via-orange-50 to-amber-50 dark:from-red-950/20 dark:via-orange-950/20 dark:to-amber-950/20 p-6 pb-4">
+            <div className="flex items-start gap-4">
+              <div className="flex-shrink-0 w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/30 flex items-center justify-center">
+                <LogOut className="h-6 w-6 text-red-600 dark:text-red-400" />
+              </div>
+              <div className="flex-1 pt-1">
+                <AlertDialogTitle className="text-2xl font-bold text-gray-900 dark:text-gray-50 mb-2">
+                  Confirm Logout
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-sm text-gray-600 dark:text-gray-300 leading-relaxed">
+                  You're about to sign out of your account. All unsaved changes will be lost. You'll need to sign in again to access your dashboard.
+                </AlertDialogDescription>
+              </div>
+            </div>
+          </div>
+          
+          <div className="px-6 py-4 bg-background">
+            <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50 border border-border">
+              <div className="flex-shrink-0 w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center">
+                <span className="text-sm font-semibold text-primary">
+                  {user?.name?.charAt(0).toUpperCase() || 'U'}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-medium text-foreground truncate">
+                  {user?.name || 'User'}
+                </p>
+                <p className="text-xs text-muted-foreground truncate">
+                  {user?.email || ''}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <AlertDialogFooter className="px-6 py-4 bg-muted/30 gap-3 sm:gap-3">
+            <AlertDialogCancel className="w-full sm:w-auto order-2 sm:order-1">
+              Stay Logged In
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={logout}
+              className="w-full sm:w-auto order-1 sm:order-2 bg-red-600 hover:bg-red-700 text-white shadow-sm hover:shadow-md transition-all duration-200 font-semibold"
+            >
+              <LogOut className="h-4 w-4 mr-2" />
+              Yes, Log Out
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <EditPatientProfileDialog
         open={editProfileDialogOpen}

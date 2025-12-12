@@ -1,4 +1,21 @@
-import "dotenv/config";
+// Load .env file explicitly from project root
+import dotenv from "dotenv";
+import { fileURLToPath } from "url";
+import { dirname, resolve } from "path";
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+const envPath = resolve(__dirname, "..", ".env");
+const result = dotenv.config({ path: envPath });
+console.log(`Loading .env from: ${envPath}`);
+if (result.error) {
+  console.error("Error loading .env:", result.error);
+} else {
+  console.log("✓ .env file loaded successfully");
+  console.log(`  TWILIO_ACCOUNT_SID: ${process.env.TWILIO_ACCOUNT_SID ? `${process.env.TWILIO_ACCOUNT_SID.substring(0, 4)}...` : 'NOT SET'}`);
+  console.log(`  TWILIO_AUTH_TOKEN: ${process.env.TWILIO_AUTH_TOKEN ? 'SET' : 'NOT SET'}`);
+}
+
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";

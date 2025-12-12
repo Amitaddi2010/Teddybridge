@@ -138,18 +138,18 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Try Firebase login first
       await signInWithEmailAndPassword(auth, email, password);
       // Then sync with backend
-      const url = `${getApiBaseUrl()}/api/auth/login`;
-      const res = await fetch(url, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({ email, password }),
-      });
-      if (!res.ok) {
-        const error = await res.json();
-        throw new Error(error.message || "Login failed");
-      }
-      await refreshUser();
+    const url = `${getApiBaseUrl()}/api/auth/login`;
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ email, password }),
+    });
+    if (!res.ok) {
+      const error = await res.json();
+      throw new Error(error.message || "Login failed");
+    }
+    await refreshUser();
     } catch (error: any) {
       // If Firebase login fails, try backend login (for existing users)
       const url = `${getApiBaseUrl()}/api/auth/login`;
@@ -229,8 +229,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     // Logout from backend
     try {
-      const url = `${getApiBaseUrl()}/api/auth/logout`;
-      await fetch(url, { method: "POST", credentials: "include" });
+    const url = `${getApiBaseUrl()}/api/auth/logout`;
+    await fetch(url, { method: "POST", credentials: "include" });
     } catch (error) {
       console.error("Backend logout error:", error);
     }

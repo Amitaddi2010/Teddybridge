@@ -1,12 +1,13 @@
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { StatusBadge } from "@/components/status-badge";
-import { Phone, Calendar, UserPlus } from "lucide-react";
+import { Phone, Calendar, UserPlus, Target } from "lucide-react";
 import type { User, PatientProfile, PatientConnection } from "@shared/schema";
 
 interface PatientCardProps {
-  patient: User & { patientProfile?: PatientProfile | null };
+  patient: User & { patientProfile?: PatientProfile | null; matchPercentage?: number };
   connection?: PatientConnection | null;
   onConnect?: () => void;
   onCall?: () => void;
@@ -57,6 +58,16 @@ export function PatientCard({
                 {patient.name}
               </h3>
               {status && <StatusBadge status={status} />}
+              {patient.matchPercentage !== undefined && (
+                <Badge 
+                  variant="secondary" 
+                  className="bg-primary/10 text-primary border-primary/20"
+                  data-testid={`badge-match-${patient.id}`}
+                >
+                  <Target className="h-3 w-3 mr-1" />
+                  {patient.matchPercentage}% match
+                </Badge>
+              )}
             </div>
             
             <p className="text-sm text-muted-foreground mt-0.5">

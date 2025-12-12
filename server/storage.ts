@@ -156,6 +156,7 @@ export class DatabaseStorage implements IStorage {
         gender: typeof profile.demographics.gender === 'string' ? profile.demographics.gender : undefined,
         procedure: typeof profile.demographics.procedure === 'string' ? profile.demographics.procedure : undefined,
       } : null,
+      showMatchPercentage: profile.showMatchPercentage ?? false,
     };
     const database = await this.db();
     const [created] = await database.insert(patientProfiles).values(profileToInsert).returning();
@@ -207,6 +208,11 @@ export class DatabaseStorage implements IStorage {
             : existingDemographics.procedure,
         };
       }
+    }
+    
+    // Handle showMatchPercentage
+    if (updates.showMatchPercentage !== undefined) {
+      profileToUpdate.showMatchPercentage = updates.showMatchPercentage;
     }
     
     // Only update if there are changes

@@ -271,21 +271,21 @@ export default function Login() {
               )}
 
               <div className="text-center space-y-2">
-                <p className="text-sm text-muted-foreground">
-                  Don&apos;t have an account?
-                </p>
-                <div className="flex items-center justify-center gap-2">
-                  <Link href="/signup/patient">
-                    <Button variant="link" size="sm" data-testid="link-patient-signup">
-                      Sign up as Patient
-                    </Button>
-                  </Link>
-                  <span className="text-muted-foreground">or</span>
-                  <Link href="/signup/doctor">
-                    <Button variant="link" size="sm" data-testid="link-doctor-signup">
-                      Sign up as Doctor
-                    </Button>
-                  </Link>
+              <p className="text-sm text-muted-foreground">
+                Don&apos;t have an account?
+              </p>
+              <div className="flex items-center justify-center gap-2">
+                <Link href="/signup/patient">
+                  <Button variant="link" size="sm" data-testid="link-patient-signup">
+                    Sign up as Patient
+                  </Button>
+                </Link>
+                <span className="text-muted-foreground">or</span>
+                <Link href="/signup/doctor">
+                  <Button variant="link" size="sm" data-testid="link-doctor-signup">
+                    Sign up as Doctor
+                  </Button>
+                </Link>
                 </div>
               </div>
             </div>
