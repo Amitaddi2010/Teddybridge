@@ -144,6 +144,16 @@ export async function registerRoutes(
     sgMail.setApiKey(process.env.SENDGRID_API_KEY);
   }
 
+  // Initialize REDCap (triggers lazy initialization to verify config)
+  console.log("\n=== REDCap Configuration Check ===");
+  const isRedcapConfigured = redcapService.isConfigured();
+  console.log(`  REDCap Status: ${isRedcapConfigured ? '✓ CONFIGURED' : '✗ NOT CONFIGURED'}`);
+  if (!isRedcapConfigured) {
+    console.log(`  REDCAP_API_URL: ${process.env.REDCAP_API_URL ? 'SET' : 'NOT SET'}`);
+    console.log(`  REDCAP_API_KEY: ${process.env.REDCAP_API_KEY ? 'SET' : 'NOT SET'}`);
+  }
+  console.log("===================================\n");
+
   // Initialize Twilio
   let twilioClient = null;
   
@@ -1265,6 +1275,7 @@ export async function registerRoutes(
           
           if (importResponse.success) {
             redcapRecordId = recordId;
+            console.log(`[Survey Send] Successfully created REDCap record ${recordId} for patient ${patient.email}`);
             
             // Get survey link for this record
             const surveyLinkResponse = await redcapService.exportSurveyLink(
@@ -1276,10 +1287,16 @@ export async function registerRoutes(
             
             if (surveyLinkResponse.success && surveyLinkResponse.data) {
               redcapSurveyLink = surveyLinkResponse.data;
+              console.log(`[Survey Send] Got survey link for record ${recordId}`);
+            } else {
+              console.warn(`[Survey Send] Failed to get survey link for record ${recordId}:`, surveyLinkResponse.error);
             }
+          } else {
+            console.error(`[Survey Send] Failed to create REDCap record for patient ${patient.email}:`, importResponse.error);
+            console.error(`[Survey Send] Will use fallback static link`);
           }
         } catch (error) {
-          console.error("Error creating REDCap record:", error);
+          console.error("[Survey Send] Error creating REDCap record:", error);
           // Continue with static link if REDCap fails
         }
       }
@@ -1696,13 +1713,16 @@ export async function registerRoutes(
   app.post("/api/redcap/poll-surveys", requireRole("DOCTOR"), async (req, res) => {
     try {
       if (!redcapService.isConfigured()) {
-        return res.status(503).json({ message: "REDCap API not configured" });
+        // Return 200 with empty result instead of 503 to avoid error logs
+        return res.json({ updated: [], errors: [], message: "REDCap API not configured" });
       }
 
       const surveys = await storage.getSurveysForDoctor(req.user!.id);
       const pendingSurveys = surveys.filter(s => 
         s.status === "SENT" || s.status === "PENDING"
       );
+
+      console.log(`[Poll] Starting survey polling for ${pendingSurveys.length} pending surveys`);
 
       const updated = [];
       const errors = [];
@@ -1711,13 +1731,17 @@ export async function registerRoutes(
         try {
           // If survey has redcapRecordId, check directly
           if (survey.redcapRecordId) {
+            console.log(`[Poll] Checking survey ${survey.id} with recordId: ${survey.redcapRecordId}, formName: ${survey.formName}`);
             const completionStatus = await redcapService.checkSurveyCompletion(
               survey.redcapRecordId,
               survey.formName || "survey",
               survey.redcapEvent || undefined
             );
 
+            console.log(`[Poll] Survey ${survey.id} completion status:`, completionStatus);
+
             if (completionStatus.completed) {
+              console.log(`[Poll] Survey ${survey.id} is completed, updating status...`);
               // Fetch response data
               const response = await redcapService.getSurveyResponse(
                 survey.redcapRecordId,
@@ -1759,27 +1783,41 @@ export async function registerRoutes(
                   const records = Array.isArray(allRecordsResponse.data) ? allRecordsResponse.data : [allRecordsResponse.data];
                   
                   console.log(`[Poll] Checking ${records.length} REDCap records for survey ${survey.id} (patient: ${patient.email})`);
+                  console.log(`[Poll] Looking for formName: ${survey.formName}, when: ${survey.when}`);
                   
                   // Try to find a matching record
                   // Look for records with patient email, patient_id, or created around the same time
                   const matchingRecord = records.find((record: any) => {
                     // Match by patient email if available (case-insensitive)
+                    // Check multiple possible email field names
                     if (patient.email) {
-                      const recordEmail = record.patient_email || record.email || record.patient_email_address || record.email_address;
-                      if (recordEmail && recordEmail.toLowerCase().trim() === patient.email.toLowerCase().trim()) {
+                      const recordEmail = record.patient_email || 
+                                        record.email || 
+                                        record.patient_email_address || 
+                                        record.email_address ||
+                                        record.patientemail ||
+                                        record.emailaddress;
+                      if (recordEmail && typeof recordEmail === 'string' && recordEmail.toLowerCase().trim() === patient.email.toLowerCase().trim()) {
                         console.log(`[Poll] Found match by email: ${recordEmail} for survey ${survey.id}`);
                         return true;
                       }
                     }
-                    // Match by patient ID if available
-                    if (record.patient_id === survey.patientId || record.patient_identifier === survey.patientId) {
-                      console.log(`[Poll] Found match by patient ID for survey ${survey.id}`);
+                    
+                    // Match by patient ID if available (check multiple field names)
+                    const recordPatientId = record.patient_id || 
+                                          record.patient_identifier || 
+                                          record.patientid ||
+                                          record.patientIdentifier;
+                    if (recordPatientId && (recordPatientId === survey.patientId || recordPatientId === patient.id)) {
+                      console.log(`[Poll] Found match by patient ID: ${recordPatientId} for survey ${survey.id}`);
                       return true;
                     }
+                    
                     // Match by survey type and approximate time
-                    if (record.survey_type === survey.when || record.when === survey.when) {
+                    const recordSurveyType = record.survey_type || record.when || record.surveytype;
+                    if (recordSurveyType === survey.when || recordSurveyType === survey.formName?.replace('_survey', '')) {
                       // Try to extract timestamp from record_id if it's in the format we created
-                      if (record.record_id && record.record_id.includes('-')) {
+                      if (record.record_id && typeof record.record_id === 'string' && record.record_id.includes('-')) {
                         const parts = record.record_id.split('-');
                         if (parts.length > 1) {
                           const recordTime = parseInt(parts[parts.length - 1]) || 0;
@@ -1792,20 +1830,106 @@ export async function registerRoutes(
                         }
                       }
                     }
+                    
                     return false;
                   });
+
+                  console.log(`[Poll] Matching result for survey ${survey.id}:`, matchingRecord ? `Found record ${matchingRecord.record_id || matchingRecord.recordId}` : 'No match found');
+                  
+                  // If no match found but we have records, log them for debugging
+                  if (!matchingRecord && records.length > 0) {
+                    console.log(`[Poll] Available REDCap records (first 3):`, records.slice(0, 3).map((r: any) => ({
+                      record_id: r.record_id || r.recordId,
+                      keys: Object.keys(r).slice(0, 15), // First 15 keys
+                      email_fields: {
+                        patient_email: r.patient_email || 'N/A',
+                        email: r.email || 'N/A',
+                        patient_email_address: r.patient_email_address || 'N/A',
+                        email_address: r.email_address || 'N/A',
+                      },
+                      patient_id_fields: {
+                        patient_id: r.patient_id || 'N/A',
+                        patient_identifier: r.patient_identifier || 'N/A',
+                      },
+                      survey_type_fields: {
+                        survey_type: r.survey_type || 'N/A',
+                        when: r.when || 'N/A',
+                      },
+                      // Show actual email value if it exists in any field
+                      actual_email_value: r.email || r.patient_email || r.patient_email_address || r.email_address || 'N/A'
+                    })));
+                    
+                    // Fallback: Try checking all records for completion if formName matches
+                    // This helps when records exist but matching failed
+                    console.log(`[Poll] Attempting fallback: checking all records for completion status with formName: ${survey.formName}`);
+                    for (const record of records.slice(0, 10)) { // Check first 10 records
+                      const recordId = record.record_id || record.recordId;
+                      if (!recordId) continue;
+                      
+                      try {
+                        const completionStatus = await redcapService.checkSurveyCompletion(
+                          recordId,
+                          survey.formName || "survey",
+                          survey.redcapEvent || undefined
+                        );
+                        
+                        if (completionStatus.completed) {
+                          console.log(`[Poll] ⚠️ Found completed record ${recordId} via fallback check! Linking to survey ${survey.id}`);
+                          
+                          // Update survey with this record ID
+                          await storage.updateSurveyRequest(survey.id, {
+                            redcapRecordId: recordId,
+                          });
+                          
+                          // Fetch response data and update status
+                          const response = await redcapService.getSurveyResponse(
+                            recordId,
+                            survey.formName || "survey",
+                            survey.redcapEvent || undefined
+                          );
+
+                          if (response.success && response.data) {
+                            const responseData = Array.isArray(response.data) ? response.data[0] : response.data;
+                            const existingResponse = await storage.getSurveyResponse(survey.id);
+                            if (!existingResponse) {
+                              await storage.createSurveyResponse({
+                                surveyRequestId: survey.id,
+                                redcapRecordId: recordId,
+                                data: responseData,
+                              });
+                            }
+                          }
+
+                          await storage.updateSurveyRequest(survey.id, {
+                            status: "COMPLETED",
+                            completedAt: completionStatus.completionTime ? new Date(completionStatus.completionTime) : new Date(),
+                          });
+
+                          updated.push(survey.id);
+                          console.log(`[Poll] ✅ Survey ${survey.id} marked as COMPLETED via fallback check`);
+                          break; // Found a match, stop checking
+                        }
+                      } catch (error) {
+                        // Skip errors for individual record checks
+                        console.debug(`[Poll] Error checking record ${recordId}:`, error);
+                      }
+                    }
+                  }
 
                 if (matchingRecord) {
                   const recordId = matchingRecord.record_id || matchingRecord.recordId;
                   
-                  console.log(`[Poll] Updating survey ${survey.id} with REDCap record ID: ${recordId}`);
+                  console.log(`[Poll] Found matching record ${recordId} for survey ${survey.id}`);
+                  console.log(`[Poll] Matching record data:`, JSON.stringify(matchingRecord, null, 2));
                   
                   // Update survey with record ID
                   await storage.updateSurveyRequest(survey.id, {
                     redcapRecordId: recordId,
                   });
+                  console.log(`[Poll] Updated survey ${survey.id} with REDCap record ID: ${recordId}`);
 
                   // Check completion status
+                  console.log(`[Poll] Checking completion for record ${recordId} with formName: ${survey.formName}`);
                   const completionStatus = await redcapService.checkSurveyCompletion(
                     recordId,
                     survey.formName || "survey",
@@ -1815,6 +1939,7 @@ export async function registerRoutes(
                   console.log(`[Poll] Survey ${survey.id} completion status:`, completionStatus);
 
                   if (completionStatus.completed) {
+                    console.log(`[Poll] Survey ${survey.id} is completed, updating status...`);
                     // Fetch response data
                     const response = await redcapService.getSurveyResponse(
                       recordId,
@@ -1842,14 +1967,19 @@ export async function registerRoutes(
                     });
 
                     updated.push(survey.id);
+                    console.log(`[Poll] ✅ Successfully updated survey ${survey.id} to COMPLETED status`);
+                  } else {
+                    console.log(`[Poll] ⚠️ Survey ${survey.id} record found but NOT completed yet`);
                   }
+                } else {
+                  console.log(`[Poll] ⚠️ No matching REDCap record found for survey ${survey.id}`);
                 }
+                }
+              } catch (error: any) {
+                console.error(`Error checking survey ${survey.id}:`, error);
+                errors.push({ surveyId: survey.id, error: error.message });
               }
-            } catch (error: any) {
-              console.error(`Error checking survey ${survey.id}:`, error);
-              errors.push({ surveyId: survey.id, error: error.message });
             }
-          }
           }
         } catch (error: any) {
           console.error(`Error checking survey ${survey.id}:`, error);
@@ -1857,12 +1987,22 @@ export async function registerRoutes(
         }
       }
 
-      res.json({
+      const response = {
         checked: pendingSurveys.length,
         updated: updated.length,
         errors: errors.length,
         details: { updated, errors },
-      });
+      };
+      
+      console.log(`[Poll] Survey polling complete: ${response.checked} checked, ${response.updated} updated, ${response.errors} errors`);
+      if (response.updated > 0) {
+        console.log(`[Poll] Updated survey IDs:`, updated);
+      }
+      if (response.errors > 0) {
+        console.log(`[Poll] Errors:`, errors);
+      }
+      
+      res.json(response);
     } catch (error) {
       console.error("Error polling surveys:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -1880,7 +2020,13 @@ export async function registerRoutes(
         surveys.map(async (survey) => {
           let responseData = null;
           
-          if (survey.redcapRecordId && redcapService.isConfigured()) {
+          // First, check if we have a stored response in the database
+          const storedResponse = await storage.getSurveyResponse(survey.id);
+          if (storedResponse && storedResponse.data) {
+            responseData = storedResponse.data;
+          } else if (survey.redcapRecordId && redcapService.isConfigured()) {
+            // If no stored response, try to fetch from REDCap
+            try {
             const response = await redcapService.getSurveyResponse(
               survey.redcapRecordId,
               survey.formName || "survey",
@@ -1889,6 +2035,19 @@ export async function registerRoutes(
             
             if (response.success && response.data) {
               responseData = Array.isArray(response.data) ? response.data[0] : response.data;
+                
+                // Store the response in the database for future use
+                if (!storedResponse) {
+                  await storage.createSurveyResponse({
+                    surveyRequestId: survey.id,
+                    redcapRecordId: survey.redcapRecordId,
+                    data: responseData,
+                  });
+                }
+              }
+            } catch (error) {
+              console.error(`Error fetching REDCap response for survey ${survey.id}:`, error);
+              // Continue without response data if REDCap fetch fails
             }
           }
 
@@ -2749,13 +2908,20 @@ export async function registerRoutes(
             try {
               const participants = await twilioClient.conferences(conferenceName).participants.list();
               
-              // Hangup all participants
+              // Hangup all participants - update each call to completed status
               for (const participant of participants) {
                 try {
+                  // End the call by updating its status to 'completed'
+                  // This will remove the participant from the conference
                   await twilioClient.calls(participant.callSid).update({ status: 'completed' });
                   console.log(`Hung up call ${participant.callSid} from conference ${conferenceName}`);
                 } catch (err: any) {
-                  console.error(`Error hanging up call ${participant.callSid}:`, err.message);
+                  // If call is already completed or doesn't exist, that's okay
+                  if (err.code === 20404) {
+                    console.log(`Call ${participant.callSid} already ended`);
+                  } else {
+                    console.error(`Error hanging up call ${participant.callSid}:`, err.message);
+                  }
                 }
               }
               
@@ -2886,13 +3052,83 @@ export async function registerRoutes(
       // Get paginated calls
       const paginatedCalls = allCalls.slice(offset, offset + limit);
       
-      // Fetch doctor information for each call
+      // Fetch doctor information and verify Twilio status for each call
       const callsWithDoctors = await Promise.all(
         paginatedCalls.map(async (call) => {
           const caller = await storage.getUser(call.callerDoctorId);
           const callee = await storage.getUser(call.calleeDoctorId);
+          
+          // Verify with Twilio if call is marked as live and has a Twilio SID
+          let actualIsLive = call.isLive;
+          if (call.isLive && !call.endedAt && call.twilioCallSid && twilioClient) {
+            try {
+              if (call.twilioCallSid.startsWith('doctor-call-')) {
+                // Conference call - check conference status
+                try {
+                  const conference = await twilioClient.conferences(call.twilioCallSid).fetch();
+                  
+                  if (conference.status === 'completed' || conference.status === 'finished') {
+                    // Conference has ended in Twilio, update database
+                    actualIsLive = false;
+                    await storage.updateDoctorCall(call.id, {
+                      isLive: false,
+                      endedAt: call.endedAt || new Date(),
+                    });
+                  } else {
+                    // Check participants
+                    const participants = await twilioClient.conferences(call.twilioCallSid).participants.list();
+                    if (participants.length === 0) {
+                      // No participants, mark as ended
+                      actualIsLive = false;
+                      await storage.updateDoctorCall(call.id, {
+                        isLive: false,
+                        endedAt: call.endedAt || new Date(),
+                      });
+                    }
+                  }
+                } catch (confErr: any) {
+                  // Conference doesn't exist or error fetching - likely ended
+                  if (confErr.code === 20404) {
+                    // Conference not found - it's ended
+                    actualIsLive = false;
+                    await storage.updateDoctorCall(call.id, {
+                      isLive: false,
+                      endedAt: call.endedAt || new Date(),
+                    });
+                  }
+                }
+              } else {
+                // Direct call - check call status
+                try {
+                  const twilioCall = await twilioClient.calls(call.twilioCallSid).fetch();
+                  if (twilioCall.status === 'completed' || twilioCall.status === 'canceled' || twilioCall.status === 'failed' || twilioCall.status === 'busy' || twilioCall.status === 'no-answer') {
+                    // Call has ended in Twilio, update database
+                    actualIsLive = false;
+                    await storage.updateDoctorCall(call.id, {
+                      isLive: false,
+                      endedAt: call.endedAt || new Date(),
+                    });
+                  }
+                } catch (callErr: any) {
+                  // Call doesn't exist or error - likely ended
+                  if (callErr.code === 20404) {
+                    actualIsLive = false;
+                    await storage.updateDoctorCall(call.id, {
+                      isLive: false,
+                      endedAt: call.endedAt || new Date(),
+                    });
+                  }
+                }
+              }
+            } catch (error: any) {
+              // Error verifying with Twilio - log but don't fail the request
+              console.error(`Error verifying Twilio status for call ${call.id}:`, error.message);
+            }
+          }
+          
           return {
             ...call,
+            isLive: actualIsLive, // Return the verified status
             caller: caller ? { id: caller.id, name: caller.name, email: caller.email } : null,
             callee: callee ? { id: callee.id, name: callee.name, email: callee.email } : null,
           };
@@ -3726,6 +3962,116 @@ export async function registerRoutes(
   // TEDDY AI ASSISTANT
   // =====================
 
+  // Speech-to-Text endpoint for Teddy AI
+  app.post("/api/teddy/stt", requireAuth, async (req, res) => {
+    try {
+      const { speechService } = await import("./services/speech");
+      
+      if (!speechService.isSTTConfigured()) {
+        return res.status(503).json({ 
+          message: "Speech-to-text not configured. Please set ASSEMBLY_AI_API_KEY in environment variables.",
+          fallback: true // Indicate to use browser API as fallback
+        });
+      }
+
+      // Get audio data from request (base64 string)
+      const audioBase64 = req.body.audio;
+      
+      if (!audioBase64 || typeof audioBase64 !== 'string') {
+        return res.status(400).json({ message: "No audio data provided" });
+      }
+
+      // Convert base64 to buffer
+      // Remove data URL prefix if present (data:audio/webm;base64,...)
+      let base64Data = audioBase64;
+      if (audioBase64.includes(',')) {
+        base64Data = audioBase64.split(',')[1];
+      }
+      
+      // Validate that it's actually base64 audio data
+      if (base64Data.length === 0) {
+        return res.status(400).json({ message: "Invalid audio data: empty base64 string" });
+      }
+      
+      let audioBuffer: Buffer;
+      try {
+        audioBuffer = Buffer.from(base64Data, 'base64');
+        
+        // Validate buffer is not empty and has reasonable size (at least a few KB for audio)
+        if (audioBuffer.length === 0) {
+          return res.status(400).json({ message: "Invalid audio data: decoded buffer is empty" });
+        }
+        
+        if (audioBuffer.length < 100) {
+          return res.status(400).json({ message: "Invalid audio data: buffer too small to be audio" });
+        }
+        
+        // Check if it looks like text/plain (simple heuristic: if first bytes are printable ASCII)
+        const firstBytes = audioBuffer.slice(0, Math.min(100, audioBuffer.length));
+        const isText = firstBytes.every(byte => (byte >= 32 && byte <= 126) || byte === 9 || byte === 10 || byte === 13);
+        if (isText && audioBuffer.length < 10000) {
+          return res.status(400).json({ message: "Invalid audio data: received text data instead of audio" });
+        }
+      } catch (error: any) {
+        return res.status(400).json({ message: `Invalid audio data: ${error.message}` });
+      }
+
+      const transcript = await speechService.speechToText(audioBuffer);
+      
+      res.json({ transcript });
+    } catch (error: any) {
+      console.error("Error in speech-to-text:", error);
+      res.status(500).json({ 
+        message: "Failed to transcribe speech",
+        error: error.message,
+        fallback: true
+      });
+    }
+  });
+
+  // Text-to-Speech endpoint for Teddy AI using Groq TTS
+  app.post("/api/teddy/tts", requireAuth, async (req, res) => {
+    try {
+      const { speechService } = await import("./services/speech");
+      
+      if (!speechService.isTTSConfigured()) {
+        return res.status(503).json({ 
+          message: "Text-to-speech not configured. Please set GROQ_API_KEY in environment variables.",
+          fallback: true // Indicate to use browser API as fallback
+        });
+      }
+
+      const { text, voice } = req.body;
+      
+      if (!text) {
+        return res.status(400).json({ message: "No text provided" });
+      }
+
+      const audioBuffer = await speechService.textToSpeech(text, voice || 'Fritz-PlayAI');
+      
+      // Return audio as base64
+      const base64Audio = Buffer.from(audioBuffer).toString('base64');
+      
+      res.json({ 
+        audio: base64Audio,
+        format: 'wav'
+      });
+    } catch (error: any) {
+      console.error("Error in text-to-speech:", error);
+      
+      // Check if it's a terms acceptance error
+      const isTermsError = error.message?.includes('terms acceptance') || error.message?.includes('model_terms_required');
+      
+      res.status(500).json({ 
+        message: isTermsError 
+          ? "Groq TTS model requires terms acceptance. Please accept the terms at https://console.groq.com/playground?model=playai-tts"
+          : "Failed to generate speech",
+        error: error.message,
+        fallback: true // Always fallback to browser TTS on error
+      });
+    }
+  });
+
   app.post("/api/teddy/ask", requireAuth, async (req, res) => {
     try {
       const { question, role } = req.body;
@@ -3882,9 +4228,16 @@ export async function registerRoutes(
       // Pre-process call requests: try to find doctor in list if user asks to call someone
       // Also handle survey sending requests and confirmations
       let enhancedQuestion = question;
-      const isConfirmation = /^(yes|yeah|yep|okay|ok|sure|please|initiate|start|go ahead|do it|proceed)$/i.test(question.trim());
+      // More flexible confirmation detection - matches "yes", "yes please", "yes, please", etc.
+      // Allow optional punctuation and whitespace
+      const trimmedQuestion = question.trim().toLowerCase();
+      const isConfirmation = /^(yes|yeah|yep|okay|ok|sure|please|initiate|start|go ahead|do it|proceed)(\s+please)?[,.!]*$/.test(trimmedQuestion) ||
+                             /^(yes|yeah|yep|okay|ok|sure),?\s+(please|go ahead|do it|proceed)[,.!]*$/.test(trimmedQuestion);
       const isCallRequest = /call|phone|contact/i.test(question);
       const isSurveyRequest = /send.*survey|survey.*send|pre.?op|post.?op|pre.?operative|post.?operative/i.test(question);
+      
+      console.log(`[Teddy] Question: "${question}", trimmed: "${trimmedQuestion}", isConfirmation: ${isConfirmation}, isCallRequest: ${isCallRequest}`);
+      console.log(`[Teddy] Session lastFoundDoctorForCall:`, (req.session as any).lastFoundDoctorForCall);
       
       // Handle survey sending requests
       if (userRole === 'DOCTOR' && isSurveyRequest) {
@@ -4151,23 +4504,36 @@ export async function registerRoutes(
       }
       
       // Handle standalone confirmations FIRST - check session for last found doctor
-      // BUT only if the current question doesn't contain context words suggesting other actions
+      // This must happen BEFORE the call request block to catch "yes" confirmations
       // Check the question itself for keywords, not the context (context always has patient info)
       const hasPatientKeywords = /patient|link|view|details|information|add|manage|survey|prom|qr|code/i.test(question);
       
+      // Check for call confirmation (yes after finding a doctor)
+      // IMPORTANT: This check must happen BEFORE any AI processing
       if (userRole === 'DOCTOR' && isConfirmation && !isCallRequest && !hasPatientKeywords) {
         // Check if we have a pending call request in the session
         const lastFoundDoctor = (req.session as any).lastFoundDoctorForCall;
-        if (lastFoundDoctor) {
+        console.log(`[Teddy] Checking for call confirmation - lastFoundDoctor:`, lastFoundDoctor);
+        if (lastFoundDoctor && lastFoundDoctor.id && lastFoundDoctor.name) {
           const doctorName = lastFoundDoctor.name.replace(/^Dr\.?\s+/i, '').trim();
+          console.log(`[Teddy] ✓ Call confirmation detected for Dr. ${doctorName}, initiating call...`);
           // Clear the session
           delete (req.session as any).lastFoundDoctorForCall;
+          // Save session after clearing
+          await new Promise<void>((resolve) => {
+            req.session.save((err) => {
+              if (err) console.error("Error saving session after clearing:", err);
+              resolve();
+            });
+          });
           return res.json({ 
             answer: `Perfect! I'll initiate the call to Dr. ${doctorName} now. Please wait a moment while I connect you. You will receive a phone call shortly that will connect both you and Dr. ${doctorName} in a secure conference call.`,
             action: 'initiate_call',
             doctorId: lastFoundDoctor.id,
             doctorName: doctorName
           });
+        } else {
+          console.log(`[Teddy] ✗ No pending doctor in session for confirmation`);
         }
       }
       
@@ -4243,6 +4609,14 @@ export async function registerRoutes(
             id: foundDoctor.id,
             name: doctorName
           };
+          console.log(`[Teddy] Stored doctor in session for confirmation:`, (req.session as any).lastFoundDoctorForCall);
+          // Save session to ensure it persists
+          await new Promise<void>((resolve) => {
+            req.session.save((err) => {
+              if (err) console.error("Error saving session:", err);
+              resolve();
+            });
+          });
         }
       }
       
