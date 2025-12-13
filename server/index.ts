@@ -1,11 +1,32 @@
 // Load .env file explicitly from project root
 import dotenv from "dotenv";
+import { resolve } from "path";
 import { fileURLToPath } from "url";
-import { dirname, resolve } from "path";
+import { dirname } from "path";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-const envPath = resolve(__dirname, "..", ".env");
+// Handle both ESM and CommonJS environments
+// In production (CommonJS), __dirname is available
+// In development (ESM), we use import.meta.url
+let envDir: string;
+// @ts-ignore - __dirname exists in CommonJS (production build)
+if (typeof __dirname !== "undefined") {
+  // @ts-ignore
+  envDir = __dirname;
+} else {
+  // ESM environment (development) - use import.meta.url
+  try {
+    if (typeof import.meta !== "undefined" && import.meta.url) {
+      const __filename = fileURLToPath(import.meta.url);
+      envDir = dirname(__filename);
+    } else {
+      envDir = process.cwd();
+    }
+  } catch (e) {
+    envDir = process.cwd();
+  }
+}
+
+const envPath = resolve(envDir, "..", ".env");
 const result = dotenv.config({ path: envPath });
 console.log(`Loading .env from: ${envPath}`);
 if (result.error) {
