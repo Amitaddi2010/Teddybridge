@@ -56,6 +56,7 @@ export const patientConnections = sqliteTable("patient_connections", {
   inviteToken: text("invite_token").notNull().unique(),
   confirmedAt: integer("confirmed_at", { mode: "timestamp" }),
   expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+  googleMeetLink: text("google_meet_link"),
   createdAt: integer("created_at", { mode: "timestamp" }).notNull().$defaultFn(() => new Date()),
 });
 

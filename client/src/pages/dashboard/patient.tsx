@@ -50,6 +50,7 @@ import {
   LogOut, 
   Link as LinkIcon,
   Phone,
+  Video,
   ClipboardCheck,
   ExternalLink,
   ChevronDown,
@@ -385,9 +386,9 @@ export default function PatientDashboard() {
                         <span className="font-medium">{item.title}</span>
                         {item.id === "connections" && incomingRequests.length > 0 && (
                           <span className="ml-auto bg-primary-foreground/20 text-primary-foreground text-xs font-semibold px-2 py-0.5 rounded-full min-w-[1.5rem] text-center">
-                            {incomingRequests.length}  
-                          </span> 
-                        )}                                           
+                            {incomingRequests.length}
+                          </span>
+                        )}
                         {item.id === "doctors" && linkedDoctors && linkedDoctors.length > 0 && (
                           <span className="ml-auto bg-secondary-foreground/20  text-primary-foreground text-xs font-semibold px-2 py-0.5 rounded-full min-w-[1.5rem] text-center">
                             {linkedDoctors.length}
@@ -715,11 +716,11 @@ export default function PatientDashboard() {
                               <p className="text-sm text-muted-foreground">Connected</p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2 pt-3 border-t">
+                          <div className="flex items-center gap-2 pt-3 border-t flex-wrap">
                             <Button
                               variant="outline"
                               size="sm"
-                              className="flex-1"
+                              className="flex-1 min-w-[100px]"
                               onClick={() => otherUser && initiateCallMutation.mutate(otherUser.id)}
                               data-testid={`button-call-connection-${connection.id}`}
                             >
@@ -729,7 +730,40 @@ export default function PatientDashboard() {
                             <Button
                               variant="outline"
                               size="sm"
-                              className="flex-1"
+                              className="flex-1 min-w-[100px] bg-blue-50 hover:bg-blue-100 text-blue-700 border-blue-200"
+                              onClick={async () => {
+                                try {
+                                  const response = await apiRequest("POST", `/api/patient/connection/${connection.id}/google-meet`, {});
+                                  const data = await response.json();
+                                  
+                                  // Open Google Meet - creates a new instant meeting
+                                  window.open(data.googleMeetLink, '_blank', 'noopener,noreferrer');
+                                  
+                                  toast({
+                                    title: "Opening Google Meet",
+                                    description: "A new meeting has been created. Share the meeting link with your peer from the meeting window.",
+                                    duration: 5000,
+                                  });
+                                  
+                                  // Refresh connections
+                                  queryClient.invalidateQueries({ queryKey: ["/api/patient/connections"] });
+                                } catch (error) {
+                                  toast({
+                                    title: "Failed to open Google Meet",
+                                    description: error instanceof Error ? error.message : "Something went wrong",
+                                    variant: "destructive",
+                                  });
+                                }
+                              }}
+                              data-testid={`button-google-meet-connection-${connection.id}`}
+                            >
+                              <Video className="h-4 w-4 mr-1" />
+                              Google Meet
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="flex-1 min-w-[100px]"
                               onClick={() => {
                                 if (otherUser) {
                                   setSelectedPatient(otherUser as PatientWithProfile);
@@ -1041,6 +1075,35 @@ export default function PatientDashboard() {
                           : meeting.requester;
                         if (otherUser) {
                           initiateCallMutation.mutate(otherUser.id);
+                        }
+                      }}
+                      onJoinGoogleMeet={async (meetLink) => {
+                        try {
+                          // Generate meeting link (using instant meeting)
+                          const response = await apiRequest("POST", `/api/patient/connection/${meeting.id}/google-meet`, {});
+                          const data = await response.json();
+                          
+                          // Open Google Meet - creates a new instant meeting
+                          // Note: User must be signed into Google account for meet.google.com/new to work
+                          if (data.googleMeetLink) {
+                            window.open(data.googleMeetLink, '_blank', 'noopener,noreferrer');
+                            
+                            toast({
+                              title: "Opening Google Meet",
+                              description: data.googleMeetLink === 'https://meet.google.com/new' 
+                                ? "Please sign in to Google if prompted, then click 'New meeting' or 'Start an instant meeting'."
+                                : "A new meeting has been created. Share the meeting link with your peer from the meeting window.",
+                              duration: 6000,
+                            });
+                          }
+                          
+                          queryClient.invalidateQueries({ queryKey: ["/api/patient/connections"] });
+                        } catch (error) {
+                          toast({
+                            title: "Failed to open Google Meet",
+                            description: error instanceof Error ? error.message : "Something went wrong",
+                            variant: "destructive",
+                          });
                         }
                       }}
                     />

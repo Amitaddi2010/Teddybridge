@@ -21,6 +21,7 @@ import { redcapService } from "./services/redcap";
 import { assemblyAIService } from "./services/assemblyai";
 import { groqService } from "./services/groq";
 import { pdfGenerator } from "./services/pdf-generator";
+import { googleCalendarService } from "./services/google-calendar";
 
 const scryptAsync = promisify(scrypt);
 
@@ -50,6 +51,14 @@ declare global {
       passwordHash: string;
       createdAt: Date;
     }
+  }
+}
+
+// Extend express-session to include Google OAuth tokens
+declare module "express-session" {
+  interface SessionData {
+    googleAccessToken?: string;
+    googleRefreshToken?: string;
   }
 }
 
@@ -651,6 +660,102 @@ export async function registerRoutes(
       res.json(connections);
     } catch (error) {
       console.error("Error fetching connections:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  // Google OAuth2 endpoints
+  app.get("/api/google/oauth/authorize", requireRole("PATIENT"), async (req, res) => {
+    try {
+      if (!googleCalendarService.isConfigured()) {
+        return res.status(503).json({ message: "Google Calendar integration not configured" });
+      }
+
+      // Store connection ID in state for callback
+      const connectionId = req.query.connectionId as string;
+      const state = connectionId || req.user!.id;
+
+      const authUrl = googleCalendarService.getAuthUrl(state);
+      res.json({ authUrl });
+    } catch (error) {
+      console.error("Error generating OAuth URL:", error);
+      res.status(500).json({ message: "Internal server error" });
+    }
+  });
+
+  app.get("/api/google/oauth/callback", async (req, res) => {
+    try {
+      const { code, state } = req.query;
+      
+      if (!code) {
+        return res.redirect('/?error=oauth_denied');
+      }
+
+      // Exchange code for tokens
+      const tokens = await googleCalendarService.getTokens(code as string);
+      
+      // Store tokens in session (could also store in database)
+      req.session.googleAccessToken = tokens.access_token;
+      if (tokens.refresh_token) {
+        req.session.googleRefreshToken = tokens.refresh_token;
+      }
+      await new Promise<void>((resolve, reject) => {
+        req.session.save((err) => {
+          if (err) reject(err);
+          else resolve();
+        });
+      });
+
+      // Redirect back to frontend with success
+      const redirectUrl = state 
+        ? `/dashboard?googleAuth=success&connectionId=${state}`
+        : '/dashboard?googleAuth=success';
+      res.redirect(redirectUrl);
+    } catch (error) {
+      console.error("OAuth callback error:", error);
+      res.redirect('/?error=oauth_failed');
+    }
+  });
+
+  // Generate Google Meet link for patient connection
+  app.post("/api/patient/connection/:connectionId/google-meet", requireRole("PATIENT"), async (req, res) => {
+    try {
+      const { connectionId } = req.params;
+      const connection = await storage.getPatientConnection(connectionId);
+      
+      if (!connection) {
+        return res.status(404).json({ message: "Connection not found" });
+      }
+
+      // Verify the user is part of this connection
+      if (connection.requesterPatientId !== req.user!.id && connection.targetPatientId !== req.user!.id) {
+        return res.status(403).json({ message: "You don't have access to this connection" });
+      }
+
+      // Get the other user's information for the meeting
+      const requester = await storage.getUser(connection.requesterPatientId);
+      const target = connection.targetPatientId ? await storage.getUser(connection.targetPatientId) : null;
+      const otherUser = connection.requesterPatientId === req.user!.id ? target : requester;
+      const currentUser = connection.requesterPatientId === req.user!.id ? requester : target;
+      
+      const meetingTitle = `Peer Support Meeting: ${currentUser?.name} & ${otherUser?.name || 'Peer'}`;
+
+      // Always generate a new instant meeting link
+      // meet.google.com/new creates a new instant meeting
+      const meetLink = googleCalendarService.generateInstantMeetingLink();
+      
+      // Store that we've created an instant meeting (don't store the actual URL since it's always /new)
+      if (connection.googleMeetLink !== 'instant') {
+        await storage.updatePatientConnection(connectionId, { 
+          googleMeetLink: 'instant'
+        });
+      }
+
+      res.json({ 
+        googleMeetLink: meetLink
+      });
+    } catch (error) {
+      console.error("Error generating Google Meet link:", error);
       res.status(500).json({ message: "Internal server error" });
     }
   });
@@ -1974,12 +2079,12 @@ export async function registerRoutes(
                 } else {
                   console.log(`[Poll] ⚠️ No matching REDCap record found for survey ${survey.id}`);
                 }
-                }
-              } catch (error: any) {
-                console.error(`Error checking survey ${survey.id}:`, error);
-                errors.push({ surveyId: survey.id, error: error.message });
               }
+            } catch (error: any) {
+              console.error(`Error checking survey ${survey.id}:`, error);
+              errors.push({ surveyId: survey.id, error: error.message });
             }
+          }
           }
         } catch (error: any) {
           console.error(`Error checking survey ${survey.id}:`, error);

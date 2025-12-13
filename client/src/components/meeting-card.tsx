@@ -2,7 +2,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/status-badge";
-import { Phone, Calendar, Clock } from "lucide-react";
+import { Phone, Calendar, Clock, Video } from "lucide-react";
 import { format, isPast, isFuture, isToday } from "date-fns";
 import type { User, PatientConnection } from "@shared/schema";
 
@@ -10,9 +10,11 @@ interface MeetingCardProps {
   meeting: PatientConnection & {
     requester?: User | null;
     target?: User | null;
+    googleMeetLink?: string | null;
   };
   currentUserId: string;
   onJoin?: () => void;
+  onJoinGoogleMeet?: (meetLink: string) => void;
   onCancel?: () => void;
   isLoading?: boolean;
 }
@@ -30,6 +32,7 @@ export function MeetingCard({
   meeting,
   currentUserId,
   onJoin,
+  onJoinGoogleMeet,
   onCancel,
   isLoading,
 }: MeetingCardProps) {
@@ -89,7 +92,19 @@ export function MeetingCard({
           </div>
           
           <div className="flex items-center gap-1 flex-shrink-0">
-            {canJoin && onJoin && (
+            {canJoin && onJoinGoogleMeet && (
+              <Button
+                size="sm"
+                onClick={() => onJoinGoogleMeet('')}
+                disabled={isLoading}
+                className="bg-blue-600 hover:bg-blue-700 text-white"
+                data-testid={`button-join-google-meet-${meeting.id}`}
+              >
+                <Video className="h-4 w-4 mr-1" />
+                Start Google Meet
+              </Button>
+            )}
+            {canJoin && !meeting.googleMeetLink && onJoin && (
               <Button
                 size="sm"
                 onClick={onJoin}

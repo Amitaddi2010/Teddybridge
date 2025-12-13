@@ -1317,7 +1317,7 @@ export default function DoctorDashboard() {
                   <div className="max-w-7xl mx-auto space-y-10">
                     {/* Recent Calls Section */}
                     {recentDoctors.length > 0 && (
-                      <div>
+                  <div>
                         <div className="mb-6">
                           <h2 className="text-2xl font-semibold mb-1.5 tracking-tight">Recent Calls</h2>
                           <p className="text-gray-500 dark:text-gray-400 text-sm">
@@ -1351,8 +1351,8 @@ export default function DoctorDashboard() {
                                           </p>
                                         )}
                                       </div>
-                                    </div>
-                                    <Button
+                  </div>
+                  <Button
                                       onClick={() => {
                                         setSelectedDoctorForCall(doctor);
                                         setCallConfirmDialogOpen(true);
@@ -1450,22 +1450,22 @@ export default function DoctorDashboard() {
                           <p className="text-sm text-gray-500 dark:text-gray-400">
                             Other doctors will appear here when they join
                           </p>
-                        </div>
+                      </div>
                     ) : (
                         <>
                           <div className="grid gap-3">
                             {paginatedDoctors.map(doctor => {
                               const callCount = doctorCallFrequency[doctor.id] || 0;
                               return (
-                                <div
-                                  key={doctor.id}
+                          <div
+                            key={doctor.id}
                                   className="group relative flex items-center justify-between gap-6 p-5 rounded-2xl bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border border-gray-200/60 dark:border-gray-800/60 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-gray-900/50 transition-all duration-200 ease-out will-change-transform"
-                                >
+                          >
                                   <div className="flex items-center gap-4 flex-1 min-w-0">
                                     <div className="relative flex-shrink-0">
                                       <div className="h-14 w-14 rounded-full bg-gradient-to-br from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 flex items-center justify-center ring-2 ring-gray-100 dark:ring-gray-800 group-hover:ring-blue-200 dark:group-hover:ring-blue-900/50 transition-all duration-300">
                                         <Users className="h-7 w-7 text-blue-600 dark:text-blue-400" />
-                                      </div>
+                              </div>
                                     </div>
                                     <div className="flex-1 min-w-0">
                                       <div className="flex items-center gap-2 mb-0.5">
@@ -1479,30 +1479,30 @@ export default function DoctorDashboard() {
                                         )}
                                       </div>
                                       <p className="text-sm text-gray-600 dark:text-gray-400 mb-0.5">
-                                        {doctor.doctorProfile?.specialty || "Healthcare Provider"}
-                                      </p>
+                                  {doctor.doctorProfile?.specialty || "Healthcare Provider"}
+                                </p>
                                       {doctor.doctorProfile?.city && (
                                         <p className="text-xs text-gray-500 dark:text-gray-500 flex items-center gap-1">
                                           <span>📍</span>
                                           {doctor.doctorProfile.city}
                                         </p>
                                       )}
-                                    </div>
-                                  </div>
-                                  <Button
+                              </div>
+                            </div>
+                            <Button
                                     onClick={() => {
                                       setSelectedDoctorForCall(doctor);
                                       setCallConfirmDialogOpen(true);
                                     }}
-                                    disabled={initiateCallMutation.isPending || !!activeCall}
-                                    data-testid={`button-call-doctor-${doctor.id}`}
+                              disabled={initiateCallMutation.isPending || !!activeCall}
+                              data-testid={`button-call-doctor-${doctor.id}`}
                                     size="lg"
                                     className="rounded-xl bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-300 px-6 font-medium"
-                                  >
-                                    <Phone className="h-4 w-4 mr-2" />
-                                    {activeCall ? "In Call" : "Call"}
-                                  </Button>
-                                </div>
+                            >
+                              <Phone className="h-4 w-4 mr-2" />
+                              {activeCall ? "In Call" : "Call"}
+                            </Button>
+                          </div>
                               );
                             })}
                           </div>
@@ -1537,8 +1537,8 @@ export default function DoctorDashboard() {
                                   </PaginationItem>
                                 </PaginationContent>
                               </Pagination>
-                            </div>
-                          )}
+                      </div>
+                    )}
                         </>
                     )}
                     </div>
@@ -1608,7 +1608,7 @@ export default function DoctorDashboard() {
                                             Live
                                           </span>
                                     )}
-                                        {call.endedAt && (
+                                    {call.endedAt && (
                                           <span className="text-gray-400 dark:text-gray-500">Completed</span>
                                     )}
                                       </div>
