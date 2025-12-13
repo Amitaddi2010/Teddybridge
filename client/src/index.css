@@ -173,10 +173,26 @@
 
   html {
     scroll-behavior: smooth;
+    -webkit-overflow-scrolling: touch;
   }
 
   body {
     @apply font-sans antialiased bg-background text-foreground;
+  }
+
+  /* Optimize scrolling performance */
+  main {
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    will-change: scroll-position;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Optimize backdrop-blur performance during scroll */
+  [class*="backdrop-blur"] {
+    transform: translateZ(0);
+    -webkit-transform: translateZ(0);
+    isolation: isolate;
   }
 }
 

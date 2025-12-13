@@ -37,6 +37,7 @@ import { InviteDialog } from "@/components/invite-dialog";
 import { ScheduleDialog } from "@/components/schedule-dialog";
 import { CallView } from "@/components/call-view";
 import { EditPatientProfileDialog } from "@/components/edit-patient-profile-dialog";
+import { TeddyAssistant } from "@/components/teddy-assistant";
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -106,7 +107,15 @@ export default function PatientDashboard() {
     queryKey: ["/api/patient/linked-doctors"],
   });
 
-  const { data: surveys, isLoading: loadingSurveys } = useQuery<SurveyRequest[]>({
+  type SurveyWithDoctor = SurveyRequest & {
+    doctor?: {
+      id: string;
+      name: string;
+      email: string;
+    } | null;
+  };
+
+  const { data: surveys, isLoading: loadingSurveys } = useQuery<SurveyWithDoctor[]>({
     queryKey: ["/api/patient/surveys"],
   });
 
@@ -349,6 +358,7 @@ export default function PatientDashboard() {
   } as React.CSSProperties;
 
   return (
+    <>
     <SidebarProvider style={sidebarStyle}>
       <div className="flex h-screen w-full">
         <Sidebar className="border-r">
@@ -375,16 +385,16 @@ export default function PatientDashboard() {
                         <span className="font-medium">{item.title}</span>
                         {item.id === "connections" && incomingRequests.length > 0 && (
                           <span className="ml-auto bg-primary-foreground/20 text-primary-foreground text-xs font-semibold px-2 py-0.5 rounded-full min-w-[1.5rem] text-center">
-                            {incomingRequests.length}
-                          </span>
-                        )}
+                            {incomingRequests.length}  
+                          </span> 
+                        )}                                           
                         {item.id === "doctors" && linkedDoctors && linkedDoctors.length > 0 && (
-                          <span className="ml-auto bg-primary-foreground/20 text-primary-foreground text-xs font-semibold px-2 py-0.5 rounded-full min-w-[1.5rem] text-center">
+                          <span className="ml-auto bg-secondary-foreground/20  text-primary-foreground text-xs font-semibold px-2 py-0.5 rounded-full min-w-[1.5rem] text-center">
                             {linkedDoctors.length}
                           </span>
                         )}
                         {item.id === "surveys" && surveys && surveys.filter(s => s.status === "SENT" || s.status === "PENDING").length > 0 && (
-                          <span className="ml-auto bg-primary-foreground/20 text-primary-foreground text-xs font-semibold px-2 py-0.5 rounded-full min-w-[1.5rem] text-center">
+                          <span className="ml-auto bg-secondary-foreground/20  text-primary-foreground text-xs font-semibold px-2 py-0.5 rounded-full min-w-[1.5rem] text-center">
                             {surveys.filter(s => s.status === "SENT" || s.status === "PENDING").length}
                           </span>
                         )}
@@ -861,6 +871,11 @@ export default function PatientDashboard() {
                                 <h4 className="font-semibold">
                                   {survey.formName || `${survey.when === 'preop' ? 'Pre-Operative' : 'Post-Operative'} Survey`}
                                 </h4>
+                                {survey.doctor && (
+                                  <span className="text-sm text-muted-foreground">
+                                    from Dr. {survey.doctor.name}
+                                  </span>
+                                )}
                                 <span className={`text-xs px-2 py-0.5 rounded-full ${
                                   isCompleted 
                                     ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400'
@@ -1194,7 +1209,7 @@ export default function PatientDashboard() {
         isLoading={sendInviteMutation.isPending}
       />
 
-      <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
+        <AlertDialog open={logoutDialogOpen} onOpenChange={setLogoutDialogOpen}>
         <AlertDialogContent className="sm:max-w-[500px] p-0 gap-0 overflow-hidden">
           <div className="bg-gradient-to-br from-red-50 via-orange-50 to-amber-50 dark:from-red-950/20 dark:via-orange-950/20 dark:to-amber-950/20 p-6 pb-4">
             <div className="flex items-start gap-4">
@@ -1243,7 +1258,7 @@ export default function PatientDashboard() {
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
-      </AlertDialog>
+        </AlertDialog>
 
       <EditPatientProfileDialog
         open={editProfileDialogOpen}
@@ -1269,5 +1284,7 @@ export default function PatientDashboard() {
         isLoading={scheduleCallMutation.isPending}
       />
     </SidebarProvider>
+      <TeddyAssistant userRole="PATIENT" />
+    </>
   );
 }

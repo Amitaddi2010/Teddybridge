@@ -348,6 +348,100 @@ export class GroqService {
   }
 
   /**
+   * Chat with Teddy AI assistant
+   */
+  async chat(question: string, context: string): Promise<string> {
+    if (!this.apiKey) {
+      throw new Error('Groq API key not configured');
+    }
+
+    const systemMessage = `You are Teddy, a friendly and helpful AI healthcare assistant for the TeddyBridge platform. You help users navigate the platform and answer questions about their data.
+
+${context}
+
+IMPORTANT GUIDELINES:
+- Be friendly, professional, and concise
+- Use the provided context to answer questions accurately
+- If you don't have information about something, say so honestly
+- Focus on being helpful and informative
+- Keep responses clear and easy to understand
+- Use healthcare-appropriate language
+- DO NOT use markdown formatting (no asterisks, underscores, backticks, or other markdown syntax)
+- Write plain text only, no bold, italic, code blocks, or other formatting
+
+CONTEXT AWARENESS:
+- Pay attention to the conversation context
+- If the user previously asked about patients, surveys, or other topics, and then says "yes" or "yes please", they are likely confirming the previous topic, NOT asking to call someone
+- Only treat "yes" as a call confirmation if the previous context was clearly about initiating a call
+
+CALL HANDLING - CRITICAL INSTRUCTIONS:
+You MUST follow these steps in order:
+
+1. When user asks to call someone (e.g., "call amit saraswat" or "call 9622046298"):
+   - IMMEDIATELY search the "AVAILABLE DOCTORS TO CALL" section in the context above
+   - Extract name or phone number from user's request
+   - Search by name (flexible: "Amit Saraswat" matches "Dr. Amit Kumar Saraswat", "Amit Saraswat", etc.)
+   - Search by phone (compare digits only: "9622046298" matches "+91 9622046298", "962-204-6298", etc.)
+
+2. If you FIND a match in the list:
+   - DO NOT give generic UI navigation instructions
+   - DO NOT say "go to Calls tab" or "click New Call"
+   - INSTEAD, respond with: "I found [Doctor Name] - Phone: [Phone Number], Specialty: [Specialty]. I can help you initiate a call to them."
+   - Provide the EXACT details from the list you found
+
+3. If you DO NOT find a match:
+   - Then say: "I couldn't find [name/phone] in the available doctors list. They may not be registered yet."
+
+EXAMPLE GOOD RESPONSE (when doctor is found):
+"I found Dr. Amit Saraswat - Phone: 9622046298, Specialty: Cardiology. I can help you initiate a call to them."
+
+EXAMPLE BAD RESPONSE (when doctor is found):
+"Go to the Calls tab and search for Amit Saraswat..." ❌ DO NOT DO THIS IF DOCTOR IS IN THE LIST`;
+
+    const response = await fetch(`${this.baseUrl}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${this.apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-oss-120b',
+        messages: [
+          { role: 'system', content: systemMessage },
+          { role: 'user', content: question }
+        ],
+        temperature: 0.7,
+        max_tokens: 1000,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`Groq API error: ${response.status} ${errorText}`);
+    }
+
+    const data = await response.json();
+    let content = data.choices[0]?.message?.content || 'I apologize, but I could not generate a response. Please try again.';
+    
+    // Remove markdown formatting (**, __, etc.)
+    // Order matters: process longer patterns first
+    content = content
+      .replace(/\*\*\*(.*?)\*\*\*/g, '$1') // Remove ***bold italic***
+      .replace(/\*\*(.*?)\*\*/g, '$1') // Remove **bold**
+      .replace(/__(.*?)__/g, '$1') // Remove __bold__
+      .replace(/~~(.*?)~~/g, '$1') // Remove ~~strikethrough~~
+      .replace(/```[\s\S]*?```/g, '') // Remove code blocks
+      .replace(/`([^`]+)`/g, '$1') // Remove `code`
+      .replace(/\*(.*?)\*/g, '$1') // Remove *italic* (must be after **)
+      .replace(/_(.*?)_/g, '$1') // Remove _italic_ (must be after __)
+      .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // Remove markdown links, keep text
+      .replace(/#{1,6}\s+/g, '') // Remove heading markers
+      .trim();
+    
+    return content;
+  }
+
+  /**
    * Generate a summary from a call transcript
    */
   async generateSummary(request: GroqSummaryRequest): Promise<GroqSummaryResponse> {

@@ -648,7 +648,30 @@ export async function registerRoutes(
   app.get("/api/patient/surveys", requireRole("PATIENT"), async (req, res) => {
     try {
       const surveys = await storage.getSurveysForPatient(req.user!.id);
-      res.json(surveys);
+      
+      // Fetch doctor information for each survey
+      const surveysWithDoctor = await Promise.all(
+        surveys.map(async (survey) => {
+          if (survey.doctorId) {
+            try {
+              const doctor = await storage.getUser(survey.doctorId);
+              return {
+                ...survey,
+                doctor: doctor ? {
+                  id: doctor.id,
+                  name: doctor.name,
+                  email: doctor.email,
+                } : null,
+              };
+            } catch (error) {
+              return { ...survey, doctor: null };
+            }
+          }
+          return { ...survey, doctor: null };
+        })
+      );
+      
+      res.json(surveysWithDoctor);
     } catch (error) {
       console.error("Error fetching surveys:", error);
       res.status(500).json({ message: "Internal server error" });
@@ -3392,7 +3415,7 @@ export async function registerRoutes(
           });
         }
       }
-      
+
       // If no recording URL/SID provided, try to find recording automatically from Twilio
       if (!actualRecordingUrl && twilioClient && call.startedAt) {
         try {
@@ -3435,7 +3458,7 @@ export async function registerRoutes(
           }
           
           // Method 2: If still not found, search by call start time
-          if (!actualRecordingUrl) {
+      if (!actualRecordingUrl) {
             try {
               const callStartTime = new Date(call.startedAt);
               const oneHourBefore = new Date(callStartTime.getTime() - 60 * 60 * 1000);
@@ -3696,6 +3719,543 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("Error generating DOC:", error);
       res.status(500).json({ message: "Failed to generate DOC", error: error.message });
+    }
+  });
+
+  // =====================
+  // TEDDY AI ASSISTANT
+  // =====================
+
+  app.post("/api/teddy/ask", requireAuth, async (req, res) => {
+    try {
+      const { question, role } = req.body;
+
+      if (!question || typeof question !== 'string') {
+        return res.status(400).json({ message: "Question is required" });
+      }
+
+      const userId = req.user!.id;
+      const userRole = role || req.user!.role;
+
+      // Build context based on user role
+      let context = `You are helping a ${userRole === 'DOCTOR' ? 'doctor' : 'patient'} user on the TeddyBridge platform.\n\n`;
+
+      if (userRole === 'DOCTOR') {
+        // Gather doctor's context
+        const [linkedPatients, surveys, calls, availableDoctors] = await Promise.all([
+          storage.getLinkRecordsForDoctor(userId).catch(() => []),
+          storage.getSurveysForDoctor(userId).catch(() => []),
+          storage.getCallsForDoctor(userId).catch(() => []),
+          storage.getAvailableDoctors().catch(() => []),
+        ]);
+
+        // Filter out placeholder records (where patientId === doctorId, created when QR code is generated)
+        const actualLinkedPatients = linkedPatients.filter(record => record.patientId !== record.doctorId);
+        const patientCount = actualLinkedPatients.length;
+        
+        // Fetch patient details for linked patients (for survey sending and context)
+        const linkedPatientsWithDetails = [];
+        for (const record of actualLinkedPatients.slice(0, 20)) { // Limit to first 20 for performance
+          try {
+            const patient = await storage.getUserWithProfile(record.patientId);
+            if (patient) {
+              linkedPatientsWithDetails.push({
+                id: patient.id,
+                name: patient.name || '',
+                email: patient.email || '',
+              });
+            }
+          } catch (error) {
+            // Skip if patient not found
+          }
+        }
+        const pendingSurveys = surveys.filter(s => !s.responseData).length;
+        const completedSurveys = surveys.filter(s => s.responseData).length;
+        const totalCalls = calls.filter(c => c.endedAt && !c.isLive).length;
+        const otherDoctors = availableDoctors.filter((d: any) => d.id !== userId);
+
+        context += `DOCTOR CONTEXT:\n`;
+        context += `- Total linked patients: ${patientCount}\n`;
+        context += `- Pending surveys: ${pendingSurveys}\n`;
+        context += `- Completed surveys: ${completedSurveys}\n`;
+        context += `- Total completed calls: ${totalCalls}\n`;
+        context += `- Available doctors to call: ${otherDoctors.length}\n\n`;
+
+        if (patientCount > 0) {
+          context += `You have ${patientCount} linked patient${patientCount > 1 ? 's' : ''}:\n`;
+          for (const patient of linkedPatientsWithDetails.slice(0, 10)) { // Limit to first 10 for context size
+            context += `  - ${patient.name} (ID: ${patient.id})\n`;
+          }
+          if (linkedPatientsWithDetails.length > 10) {
+            context += `  ... and ${linkedPatientsWithDetails.length - 10} more\n`;
+          }
+        }
+        if (pendingSurveys > 0) {
+          context += `You have ${pendingSurveys} pending survey${pendingSurveys > 1 ? 's' : ''} awaiting completion.\n`;
+        }
+        if (completedSurveys > 0) {
+          context += `You have ${completedSurveys} completed survey${completedSurveys > 1 ? 's' : ''} ready for review.\n`;
+        }
+
+        // Add available doctors with their phone numbers
+        if (otherDoctors.length > 0) {
+          context += `\n=== AVAILABLE DOCTORS TO CALL ===\n`;
+          context += `The following doctors are available for doctor-to-doctor calls. When a user asks to call someone, you MUST search this list first:\n\n`;
+          otherDoctors.forEach((doctor: any) => {
+            const phoneNumber = doctor.doctorProfile?.phoneNumber || doctor.phoneNumber || 'Not available';
+            const specialty = doctor.doctorProfile?.specialty || 'General';
+            const email = doctor.email || 'Not available';
+            const cleanPhone = phoneNumber.replace(/[^0-9]/g, ''); // Remove formatting for matching
+            context += `Doctor: ${doctor.name}\n`;
+            context += `  - Phone: ${phoneNumber} (digits only: ${cleanPhone})\n`;
+            context += `  - Specialty: ${specialty}\n`;
+            context += `  - Email: ${email}\n`;
+            context += `  - ID: ${doctor.id}\n\n`;
+          });
+          context += `=== CALL REQUEST HANDLING ===\n`;
+          context += `When a user asks to call someone (e.g., "call amit saraswat" or "call 9622046298"):\n`;
+          context += `1. FIRST, search the AVAILABLE DOCTORS list above by:\n`;
+          context += `   - Matching names (be flexible: "Amit Saraswat" matches "Dr. Amit Kumar Saraswat", "Amit Saraswat", etc.)\n`;
+          context += `   - Matching phone numbers (compare digits only, ignore spaces/dashes/formatting)\n`;
+          context += `2. If you find a match, respond with the doctor's EXACT details from the list above:\n`;
+          context += `   - Say: "I found Dr. [exact name from list] - Phone: [exact phone from list], Specialty: [specialty]. I can help you initiate a call to them."\n`;
+          context += `   - DO NOT give generic instructions about navigating the UI\n`;
+          context += `   - DO NOT tell them to search manually\n`;
+          context += `   - Provide the specific information you found\n`;
+          context += `3. If NO match is found in the list, then say: "I couldn't find [name/phone] in the available doctors list. They may not be registered on the platform yet, or you might need to add them first."\n`;
+          context += `\nCRITICAL: Always check the AVAILABLE DOCTORS list FIRST before responding about calls.\n`;
+        } else {
+          context += `\nNo other doctors are currently available to call.\n`;
+        }
+
+        context += `\nYou can help with questions about:\n`;
+        context += `- Patient management and linked patients\n`;
+        context += `- PROMS (Patient-Reported Outcome Measures) surveys\n`;
+        context += `- Sending pre-operative or post-operative surveys to patients\n`;
+        context += `- Survey responses and analytics\n`;
+        context += `- Doctor-to-doctor calls and consultations\n`;
+        context += `- QR code generation for patient linking\n`;
+        context += `\nSURVEY SENDING:\n`;
+        context += `- When a user asks to send a survey (e.g., "send pre-op survey to [patient name]" or "send post-op survey to [patient name]"), the system will automatically:\n`;
+        context += `  1. Find the patient in the linked patients list\n`;
+        context += `  2. Create a survey request\n`;
+        context += `  3. Send an email with the survey link to the patient\n`;
+        context += `- Just confirm with the user that you'll send the survey, and ask them to confirm if needed.\n`;
+      } else {
+        // Gather patient's context
+        const [connections, surveys, linkedDoctors] = await Promise.all([
+          storage.getConnectionsForPatient(userId).catch(() => []),
+          storage.getSurveysForPatient(userId).catch(() => []),
+          storage.getLinkRecordsForPatient(userId).catch(() => []),
+        ]);
+
+        const confirmedConnections = connections.filter(c => c.status === 'CONFIRMED').length;
+        const pendingRequests = connections.filter(c => c.status === 'PENDING').length;
+        const surveyCount = surveys.length;
+        const doctorCount = linkedDoctors.length;
+
+        context += `PATIENT CONTEXT:\n`;
+        context += `- Confirmed peer connections: ${confirmedConnections}\n`;
+        context += `- Pending connection requests: ${pendingRequests}\n`;
+        context += `- Total surveys received: ${surveyCount}\n`;
+        context += `- Linked doctors: ${doctorCount}\n\n`;
+
+        if (confirmedConnections > 0) {
+          context += `You have ${confirmedConnections} confirmed peer connection${confirmedConnections > 1 ? 's' : ''}.\n`;
+        }
+        if (surveyCount > 0) {
+          context += `You have ${surveyCount} survey${surveyCount > 1 ? 's' : ''} from your doctor${surveyCount > 1 ? 's' : ''}.\n`;
+        }
+
+        context += `\nYou can help with questions about:\n`;
+        context += `- Peer connections and matching\n`;
+        context += `- Connection requests (pending, accepted, declined)\n`;
+        context += `- Surveys from your doctors\n`;
+        context += `- Scheduled meetings with peers\n`;
+        context += `- Your profile and preferences\n`;
+        context += `- Match percentages with other patients (if enabled)\n`;
+      }
+
+      // Import groqService dynamically
+      const { groqService } = await import("./services/groq");
+      
+      // Pre-process call requests: try to find doctor in list if user asks to call someone
+      // Also handle survey sending requests and confirmations
+      let enhancedQuestion = question;
+      const isConfirmation = /^(yes|yeah|yep|okay|ok|sure|please|initiate|start|go ahead|do it|proceed)$/i.test(question.trim());
+      const isCallRequest = /call|phone|contact/i.test(question);
+      const isSurveyRequest = /send.*survey|survey.*send|pre.?op|post.?op|pre.?operative|post.?operative/i.test(question);
+      
+      // Handle survey sending requests
+      if (userRole === 'DOCTOR' && isSurveyRequest) {
+        // Fetch linked patients for survey sending
+        const [linkedPatients] = await Promise.all([
+          storage.getLinkRecordsForDoctor(userId).catch(() => []),
+        ]);
+        const actualLinkedPatients = linkedPatients.filter(record => record.patientId !== record.doctorId);
+        const surveyLinkedPatientsWithDetails: any[] = [];
+        for (const record of actualLinkedPatients.slice(0, 20)) {
+          try {
+            const patient = await storage.getUserWithProfile(record.patientId);
+            if (patient) {
+              surveyLinkedPatientsWithDetails.push({
+                id: patient.id,
+                name: patient.name || '',
+                email: patient.email || '',
+              });
+            }
+          } catch (error) {
+            // Skip if patient not found
+          }
+        }
+        
+        // Detect survey type (pre-op or post-op)
+        const isPreOp = /pre.?op|pre.?operative/i.test(question);
+        const isPostOp = /post.?op|post.?operative/i.test(question);
+        const surveyType = isPreOp ? 'preop' : (isPostOp ? 'postop' : null);
+        
+        // Extract patient name from question (remove survey-related words)
+        const cleanedQuestion = question
+          .replace(/send|survey|pre.?op|post.?op|pre.?operative|post.?operative|to|the|patient/gi, '')
+          .trim();
+        
+        // Check if user said "this patient" or "this" - use first patient if only one exists
+        const isThisPatient = /this/i.test(cleanedQuestion);
+        let foundPatient: any = null;
+        
+        if (isThisPatient && surveyLinkedPatientsWithDetails.length === 1) {
+          // User said "this patient" and there's only one patient
+          foundPatient = surveyLinkedPatientsWithDetails[0];
+        } else if (surveyLinkedPatientsWithDetails.length > 0) {
+          // Extract name patterns from the question
+          const patientNamePatterns = cleanedQuestion
+            .replace(/this/gi, '') // Remove "this" if present
+            .trim()
+            .split(/\s+/)
+            .filter(word => word.length > 2);
+          
+          if (patientNamePatterns.length > 0) {
+            // Try to find patient by name matching
+            foundPatient = surveyLinkedPatientsWithDetails.find((patient: any) => {
+              const patientName = (patient.name || '').toLowerCase();
+              // Check if all patterns match (flexible matching)
+              return patientNamePatterns.every(pattern => {
+                const patternLower = pattern.toLowerCase();
+                // Check if pattern is in the full name
+                if (patientName.includes(patternLower)) return true;
+                // Check if pattern matches any part of the name
+                const nameParts = patientName.split(/\s+/);
+                return nameParts.some(part => 
+                  part.startsWith(patternLower) || 
+                  patternLower.startsWith(part) ||
+                  part === patternLower
+                );
+              });
+            });
+          } else if (surveyLinkedPatientsWithDetails.length === 1) {
+            // No name provided but only one patient - use that one
+            foundPatient = surveyLinkedPatientsWithDetails[0];
+          }
+        }
+        
+        if (foundPatient && surveyType) {
+          // Store in session for confirmation
+          (req.session as any).pendingSurveySend = {
+            patientId: foundPatient.id,
+            patientName: foundPatient.name,
+            surveyType: surveyType,
+          };
+          
+          context += `\n\n=== SURVEY SEND REQUEST DETECTED - PATIENT FOUND ===\n`;
+          context += `The user wants to send a ${surveyType === 'preop' ? 'pre-operative' : 'post-operative'} survey.\n`;
+          context += `PATIENT FOUND: ${foundPatient.name} (ID: ${foundPatient.id})\n`;
+          context += `\nCRITICAL INSTRUCTIONS:\n`;
+          context += `- You MUST immediately confirm that you will send the survey to ${foundPatient.name}\n`;
+          context += `- Say: "I'll send a ${surveyType === 'preop' ? 'pre-operative' : 'post-operative'} survey to ${foundPatient.name}. Would you like me to proceed?"\n`;
+          context += `- DO NOT ask which patient - you have already identified them\n`;
+          context += `- DO NOT ask which survey type - it's already specified (${surveyType === 'preop' ? 'pre-op' : 'post-op'})\n`;
+          context += `- Simply confirm and ask for final approval\n`;
+        } else if (!foundPatient && surveyLinkedPatientsWithDetails.length > 0 && surveyType) {
+          // If only one patient and survey type is specified, use that patient automatically
+          if (surveyLinkedPatientsWithDetails.length === 1) {
+            foundPatient = surveyLinkedPatientsWithDetails[0];
+            // Store in session for confirmation
+            (req.session as any).pendingSurveySend = {
+              patientId: foundPatient.id,
+              patientName: foundPatient.name,
+              surveyType: surveyType,
+            };
+            context += `\n\n=== SURVEY SEND REQUEST DETECTED - PATIENT FOUND (SINGLE PATIENT) ===\n`;
+            context += `The user wants to send a ${surveyType === 'preop' ? 'pre-operative' : 'post-operative'} survey.\n`;
+            context += `Since there's only one linked patient, I'm using: ${foundPatient.name} (ID: ${foundPatient.id})\n`;
+            context += `\nCRITICAL INSTRUCTIONS:\n`;
+            context += `- You MUST immediately confirm: "I'll send a ${surveyType === 'preop' ? 'pre-operative' : 'post-operative'} survey to ${foundPatient.name}. Would you like me to proceed?"\n`;
+            context += `- DO NOT ask which patient - there's only one\n`;
+            context += `- DO NOT ask which survey type - it's already specified\n`;
+          } else {
+            context += `\n\n=== SURVEY SEND REQUEST ===\n`;
+            context += `The user wants to send a ${surveyType === 'preop' ? 'pre-operative' : 'post-operative'} survey, but I couldn't identify which patient. Available linked patients:\n`;
+            surveyLinkedPatientsWithDetails.forEach((patient: any) => {
+              context += `- ${patient.name}\n`;
+            });
+            context += `\nAsk: "Which patient would you like to send the ${surveyType === 'preop' ? 'pre-operative' : 'post-operative'} survey to?"\n`;
+          }
+        } else if (!surveyType) {
+          context += `\n\n=== SURVEY SEND REQUEST ===\n`;
+          context += `The user wants to send a survey. Ask them to specify whether it's a pre-operative (pre-op) or post-operative (post-op) survey.\n`;
+        } else if (surveyLinkedPatientsWithDetails.length === 0) {
+          context += `\n\n=== SURVEY SEND REQUEST ===\n`;
+          context += `The user wants to send a survey, but there are no linked patients. They need to link patients first before sending surveys.\n`;
+        }
+      }
+      
+      // Handle survey send confirmations
+      if (userRole === 'DOCTOR' && isConfirmation && !isCallRequest) {
+        const pendingSurvey = (req.session as any).pendingSurveySend;
+        if (pendingSurvey) {
+          // Clear the session
+          delete (req.session as any).pendingSurveySend;
+          
+          try {
+            // Actually send the survey by directly calling the survey sending logic
+            const patient = await storage.getUser(pendingSurvey.patientId);
+            if (!patient) {
+              return res.json({ 
+                answer: `I couldn't find the patient. Please try again.`,
+              });
+            }
+
+            // Import REDCap service
+            const { redcapService } = await import("./services/redcap");
+
+            // Generate or get REDCap survey link
+            let redcapSurveyLink = process.env.REDCAP_SURVEY_LINK || "https://redcap.link/CarebridgeAI";
+            let redcapRecordId: string | null = null;
+            let redcapEvent: string | undefined = undefined;
+
+            // If REDCap API is configured, try to create a record and get survey link
+            if (redcapService.isConfigured()) {
+              try {
+                // Create a unique record ID using patient ID and timestamp (matching endpoint format)
+                const recordId = `${pendingSurvey.patientId.substring(0, 8)}-${Date.now()}`;
+                
+                // Create record in REDCap with patient data (matching endpoint format)
+                const recordData: any = {
+                  record_id: recordId,
+                };
+                
+                // Add patient identifier if available
+                if (patient.email) {
+                  recordData.patient_email = patient.email;
+                }
+                recordData.patient_id = pendingSurvey.patientId;
+                recordData.survey_type = pendingSurvey.surveyType;
+                recordData.survey_status = "SENT";
+                
+                const createResult = await redcapService.importRecords([recordData]);
+
+                if (createResult.success) {
+                  redcapRecordId = recordId;
+                  
+                  // Try to get survey link - use a default form name if needed
+                  const formName = `${pendingSurvey.surveyType}_survey`;
+                  const surveyLinkResponse = await redcapService.exportSurveyLink(
+                    recordId,
+                    formName,
+                    redcapEvent,
+                    "survey"
+                  );
+                  
+                  if (surveyLinkResponse.success && surveyLinkResponse.data) {
+                    redcapSurveyLink = surveyLinkResponse.data;
+                  }
+                }
+              } catch (error) {
+                console.error("Error creating REDCap record:", error);
+                // Continue with static link if REDCap fails
+              }
+            }
+
+            // Create survey request in database (matching the endpoint's format)
+            const formName = `${pendingSurvey.surveyType}_survey`;
+            const surveyRequest = await storage.createSurveyRequest({
+              doctorId: userId,
+              patientId: pendingSurvey.patientId,
+              formName: formName,
+              when: pendingSurvey.surveyType,
+              status: "SENT",
+              surveyLink: redcapSurveyLink,
+              redcapRecordId: redcapRecordId,
+              redcapEvent: redcapEvent,
+            });
+
+            // Send email with survey link (using same approach as the endpoint)
+            if (process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM_EMAIL && patient.email) {
+              try {
+                
+                const surveyTypeLabel = pendingSurvey.surveyType === 'preop' ? 'Pre-Operative' : 'Post-Operative';
+                await sgMail.send({
+                  to: patient.email,
+                  from: process.env.SENDGRID_FROM_EMAIL,
+                  subject: `PROMS Survey from ${(req.user as any)?.name || 'Your Doctor'} - TeddyBridge`,
+                  html: `
+                    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                      <h2 style="color: #2563eb;">Please Complete Your ${surveyTypeLabel} Survey</h2>
+                      <p>Dr. ${(req.user as any)?.name || 'Your doctor'} has requested that you complete a health outcomes survey.</p>
+                      <p>This survey helps your care team track your progress and provide better care.</p>
+                      <div style="margin: 30px 0; text-align: center;">
+                        <a href="${redcapSurveyLink}" 
+                           style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block; font-weight: bold;">
+                          Complete Survey
+                        </a>
+                      </div>
+                      <p style="color: #666; font-size: 14px;">Or copy and paste this link into your browser:</p>
+                      <p style="color: #2563eb; word-break: break-all; font-size: 12px;">${redcapSurveyLink}</p>
+                      <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
+                      <p style="color: #666; font-size: 12px;">This is an automated message from TeddyBridge. Please do not reply to this email.</p>
+                    </div>
+                  `,
+                });
+              } catch (emailError: any) {
+                console.error("Email sending failed:", emailError);
+                // Continue even if email fails - survey is still created
+              }
+            }
+            
+            // Create audit log
+            try {
+              await storage.createAuditLog({
+                userId: userId,
+                action: "SURVEY_SENT",
+                resourceType: "survey_request",
+                resourceId: surveyRequest.id,
+                metadata: { patientId: pendingSurvey.patientId, when: pendingSurvey.surveyType, surveyLink: redcapSurveyLink },
+              });
+            } catch (auditError) {
+              console.error("Audit log creation failed:", auditError);
+              // Continue even if audit log fails
+            }
+
+            // Return success message - survey was created even if email failed
+            return res.json({ 
+              answer: `Perfect! I've sent the ${pendingSurvey.surveyType === 'preop' ? 'pre-operative' : 'post-operative'} survey to ${pendingSurvey.patientName}. ${process.env.SENDGRID_API_KEY && process.env.SENDGRID_FROM_EMAIL && patient.email ? 'They will receive an email with the survey link shortly.' : 'The survey link has been generated and is available in your dashboard.'}`,
+              action: 'survey_sent',
+            });
+          } catch (error: any) {
+            console.error("Error sending survey:", error);
+            return res.json({ 
+              answer: `I encountered an error while sending the survey: ${error.message || 'Please try again.'}`,
+            });
+          }
+        }
+      }
+      
+      // Handle standalone confirmations FIRST - check session for last found doctor
+      // BUT only if the current question doesn't contain context words suggesting other actions
+      // Check the question itself for keywords, not the context (context always has patient info)
+      const hasPatientKeywords = /patient|link|view|details|information|add|manage|survey|prom|qr|code/i.test(question);
+      
+      if (userRole === 'DOCTOR' && isConfirmation && !isCallRequest && !hasPatientKeywords) {
+        // Check if we have a pending call request in the session
+        const lastFoundDoctor = (req.session as any).lastFoundDoctorForCall;
+        if (lastFoundDoctor) {
+          const doctorName = lastFoundDoctor.name.replace(/^Dr\.?\s+/i, '').trim();
+          // Clear the session
+          delete (req.session as any).lastFoundDoctorForCall;
+          return res.json({ 
+            answer: `Perfect! I'll initiate the call to Dr. ${doctorName} now. Please wait a moment while I connect you. You will receive a phone call shortly that will connect both you and Dr. ${doctorName} in a secure conference call.`,
+            action: 'initiate_call',
+            doctorId: lastFoundDoctor.id,
+            doctorName: doctorName
+          });
+        }
+      }
+      
+      if (userRole === 'DOCTOR' && (isCallRequest || isConfirmation)) {
+        const [availableDoctors] = await Promise.all([
+          storage.getAvailableDoctors().catch(() => []),
+        ]);
+        const otherDoctors = availableDoctors.filter((d: any) => d.id !== userId);
+        
+        // Extract potential name or phone number from question
+        const phoneMatch = question.match(/\b\d{10,}\b/); // 10+ digits
+        const phoneNumber = phoneMatch ? phoneMatch[0] : null;
+        
+        // Normalize phone numbers for comparison
+        const normalizePhone = (phone: string) => phone.replace(/[^0-9]/g, '');
+        
+        let foundDoctor: any = null;
+        
+        // Try to find by phone number first (more reliable)
+        if (phoneNumber) {
+          const normalizedQueryPhone = normalizePhone(phoneNumber);
+          foundDoctor = otherDoctors.find((doctor: any) => {
+            const doctorPhone = doctor.doctorProfile?.phoneNumber || doctor.phoneNumber || '';
+            return normalizePhone(doctorPhone) === normalizedQueryPhone || 
+                   normalizePhone(doctorPhone).endsWith(normalizedQueryPhone) ||
+                   normalizedQueryPhone.endsWith(normalizePhone(doctorPhone));
+          });
+        }
+        
+        // If not found by phone, try by name
+        if (!foundDoctor) {
+          const namePatterns = question.toLowerCase()
+            .replace(/call|phone|contact|doctor|dr\.?/gi, '')
+            .trim()
+            .split(/\s+/)
+            .filter(word => word.length > 2);
+          
+          if (namePatterns.length > 0) {
+            foundDoctor = otherDoctors.find((doctor: any) => {
+              const doctorName = (doctor.name || '').toLowerCase();
+              // Check if all name parts match (flexible matching)
+              return namePatterns.every(pattern => doctorName.includes(pattern)) ||
+                     namePatterns.some(pattern => {
+                       const parts = doctorName.split(/\s+/);
+                       return parts.some(part => part.startsWith(pattern) || pattern.startsWith(part));
+                     });
+            });
+          }
+        }
+        
+        // If we found a doctor, add it to the context for the AI
+        if (foundDoctor) {
+          const phoneNumber = foundDoctor.doctorProfile?.phoneNumber || foundDoctor.phoneNumber || 'Not available';
+          const specialty = foundDoctor.doctorProfile?.specialty || 'General';
+          // Clean up name to avoid duplicate "Dr" prefix
+          let doctorName = foundDoctor.name || '';
+          doctorName = doctorName.replace(/^Dr\.?\s+/i, '').trim(); // Remove leading "Dr" or "Dr."
+          
+          context += `\n\n=== CALL REQUEST DETECTED ===\n`;
+          context += `The user asked to call someone, and I found a match in the available doctors list:\n`;
+          context += `FOUND DOCTOR: ${doctorName}\n`;
+          context += `Phone: ${phoneNumber}\n`;
+          context += `Specialty: ${specialty}\n`;
+          context += `ID: ${foundDoctor.id}\n`;
+          context += `\nYou MUST respond with the exact information above. Do NOT give generic UI navigation instructions.`;
+          context += `\nSay: "I found Dr. ${doctorName} - Phone: ${phoneNumber}, Specialty: ${specialty}. Would you like me to initiate the call?"\n`;
+          context += `\nIf the user responds with "yes", "yeah", "yep", "okay", "ok", "sure", "please", or "initiate", you should respond with:\n`;
+          context += `"Perfect! I'll initiate the call to Dr. ${doctorName} now. You will receive a phone call shortly. The call will connect both you and Dr. ${doctorName} in a secure conference call."\n`;
+          context += `\nIMPORTANT: When user confirms they want to call, acknowledge it and explain what will happen next.`;
+          
+          // Store the found doctor in session for confirmation handling
+          (req.session as any).lastFoundDoctorForCall = {
+            id: foundDoctor.id,
+            name: doctorName
+          };
+        }
+      }
+      
+      // Get response from Groq
+      const answer = await groqService.chat(enhancedQuestion, context);
+
+      res.json({ answer });
+    } catch (error: any) {
+      console.error("Error with Teddy AI:", error);
+      res.status(500).json({ 
+        message: "Failed to get AI response", 
+        error: error.message || "Internal server error" 
+      });
     }
   });
 

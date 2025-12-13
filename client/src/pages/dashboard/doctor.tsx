@@ -35,6 +35,7 @@ import { CallView } from "@/components/call-view";
 import { EditDoctorProfileDialog } from "@/components/edit-doctor-profile-dialog";
 import { SurveyAnalytics } from "@/components/survey-analytics";
 import { SurveyResponseViewer } from "@/components/survey-response-viewer";
+import { TeddyAssistant } from "@/components/teddy-assistant";
 import {
   Pagination,
   PaginationContent,
@@ -154,6 +155,21 @@ export default function DoctorDashboard() {
 
   const callHistory = callHistoryData?.calls || [];
   const pagination = callHistoryData?.pagination;
+
+  // Fetch total completed calls count (fetch all calls to count completed ones)
+  const { data: totalCompletedCalls } = useQuery({
+    queryKey: ["/api/doctor/calls", "completed-count"],
+    queryFn: async () => {
+      const response = await fetch(`/api/doctor/calls?page=1&limit=1000`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to fetch completed calls");
+      const data = await response.json();
+      // Count completed calls (ended and not live)
+      return data.calls?.filter((call: any) => call.endedAt && !call.isLive).length || 0;
+    },
+    enabled: !!user && activeTab === "dashboard",
+  });
 
   const { refreshUser } = useAuth();
   
@@ -542,10 +558,10 @@ export default function DoctorDashboard() {
   if (activeCall) {
     return (
       <>
-        <CallView
-          participantName={activeCall.participantName}
-          isConnecting={initiateCallMutation.isPending}
-          onEndCall={() => {
+      <CallView
+        participantName={activeCall.participantName}
+        isConnecting={initiateCallMutation.isPending}
+        onEndCall={() => {
             console.log("onEndCall called, opening dialog");
             setEndCallConfirmDialogOpen(true);
             console.log("Dialog state set to true");
@@ -628,13 +644,13 @@ export default function DoctorDashboard() {
                       // Still close dialog and clear state even on error
                       setEndCallConfirmDialogOpen(false);
                     }
-                  } else {
+          } else {
                     console.log("No callId found, clearing local state");
-                    setActiveCall(null);
-                    setCurrentCallId(null);
+            setActiveCall(null);
+            setCurrentCallId(null);
                     setEndCallConfirmDialogOpen(false);
-                  }
-                }}
+          }
+        }}
                 className="w-full sm:w-auto order-1 sm:order-2 bg-orange-600 hover:bg-orange-700 text-white shadow-sm hover:shadow-md transition-all duration-200 font-semibold"
                 disabled={endCallMutation.isPending}
                 type="button"
@@ -656,6 +672,7 @@ export default function DoctorDashboard() {
   } as React.CSSProperties;
 
   return (
+    <>
     <SidebarProvider style={sidebarStyle}>
       <div className="flex h-screen w-full">
         <Sidebar className="border-r">
@@ -782,8 +799,10 @@ export default function DoctorDashboard() {
                         <CardContent className="p-6">
                           <div className="flex items-center justify-between">
                             <div>
-                              <p className="text-sm font-medium text-muted-foreground mb-1">Active Calls</p>
-                              <p className="text-3xl font-bold">0</p>
+                              <p className="text-sm font-medium text-muted-foreground mb-1">Total Completed Calls</p>
+                              <p className="text-3xl font-bold">
+                                {totalCompletedCalls ?? 0}
+                              </p>
                               <p className="text-xs text-muted-foreground mt-1">Doctor-to-doctor</p>
                             </div>
                             <Phone className="h-10 w-10 text-primary opacity-60" />
@@ -1068,79 +1087,82 @@ export default function DoctorDashboard() {
                 {/* Hero Section */}
                 <section className="bg-gradient-to-br from-gray-900 via-gray-800 to-black text-white py-12 px-6">
                   <div className="max-w-7xl mx-auto">
-                    <h2 className="text-3xl md:text-4xl font-bold mb-3">Doctor-to-Doctor Calls</h2>
+                    <h2 className="text-3xl md:text-4xl font-bold mb-3">Calls</h2>
                     <p className="text-white/85 text-lg max-w-3xl">
-                      Secure communication with AI-powered transcription and call summaries
+                      Connect with colleagues through secure, AI-powered voice calls
                     </p>
                   </div>
                 </section>
 
-                <section className="py-8 px-6 bg-background">
-                  <div className="max-w-7xl mx-auto space-y-6">
-                <div className="flex items-center justify-between">
+                <section className="py-12 px-6 bg-gray-50/30 dark:bg-gray-950/30 min-h-full">
+                  <div className="max-w-7xl mx-auto space-y-10">
+                    {/* Available Doctors Section */}
                   <div>
-                    <h2 className="text-2xl font-bold">Available Doctors</h2>
-                    <p className="text-muted-foreground">
-                      Connect with other doctors for consultations
+                      <div className="flex items-center justify-between mb-6">
+                        <div>
+                          <h2 className="text-2xl font-semibold mb-1.5 tracking-tight">Available Doctors</h2>
+                          <p className="text-gray-500 dark:text-gray-400 text-sm">
+                            Start a consultation with a colleague
                     </p>
                   </div>
                   <Button
-                    onClick={() => setClearStaleCallsDialogOpen(true)}
-                    variant="outline"
+                          onClick={() => setClearStaleCallsDialogOpen(true)}
+                          variant="ghost"
                     size="sm"
                     disabled={clearStaleCallsMutation.isPending}
+                          className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100"
                   >
                     {clearStaleCallsMutation.isPending ? "Clearing..." : "Clear Stale Calls"}
                   </Button>
                 </div>
 
-                <Card className="border-2">
-                  <CardHeader>
-                    <CardTitle>Available Doctors</CardTitle>
-                    <CardDescription>
-                      Call other doctors for consultations with AI-powered transcription
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
                     {doctors?.filter(d => d.id !== user?.id).length === 0 ? (
-                      <div className="py-12 text-center">
-                        <Users className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-                        <h3 className="font-semibold text-lg mb-2">No other doctors available</h3>
-                        <p className="text-muted-foreground">
-                          Other doctors will appear here when they join the platform
-                        </p>
+                        <div className="py-20 text-center rounded-3xl bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm border border-gray-200/50 dark:border-gray-800/50 shadow-sm">
+                          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 mb-4">
+                            <Users className="h-8 w-8 text-gray-400 dark:text-gray-500" />
+                          </div>
+                          <h3 className="font-semibold text-lg mb-1.5 text-gray-900 dark:text-gray-100">No doctors available</h3>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">
+                            Other doctors will appear here when they join
+                          </p>
                       </div>
                     ) : (
-                      <div className="space-y-3">
+                        <div className="grid gap-3">
                         {doctors?.filter(d => d.id !== user?.id).map(doctor => (
                           <div
                             key={doctor.id}
-                            className="flex items-center justify-between gap-4 p-4 rounded-lg border-2 hover:border-primary/50 transition-colors hover:bg-accent/50"
+                              className="group relative flex items-center justify-between gap-6 p-5 rounded-2xl bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border border-gray-200/60 dark:border-gray-800/60 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-gray-900/50 transition-all duration-200 ease-out will-change-transform"
                           >
-                            <div className="flex items-center gap-3">
-                              <div className="h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-                                <Users className="h-6 w-6 text-primary" />
+                              <div className="flex items-center gap-4 flex-1 min-w-0">
+                                <div className="relative flex-shrink-0">
+                                  <div className="h-14 w-14 rounded-full bg-gradient-to-br from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 flex items-center justify-center ring-2 ring-gray-100 dark:ring-gray-800 group-hover:ring-blue-200 dark:group-hover:ring-blue-900/50 transition-all duration-300">
+                                    <Users className="h-7 w-7 text-blue-600 dark:text-blue-400" />
                               </div>
-                              <div>
-                                <p className="font-semibold text-base">{doctor.name}</p>
-                                <p className="text-sm text-muted-foreground">
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                  <p className="font-semibold text-base mb-0.5 text-gray-900 dark:text-gray-100 truncate">
+                                    {doctor.name}
+                                  </p>
+                                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-0.5">
                                   {doctor.doctorProfile?.specialty || "Healthcare Provider"}
                                 </p>
-                                {doctor.doctorProfile?.city && (
-                                  <p className="text-xs text-muted-foreground">
-                                    {doctor.doctorProfile.city}
-                                  </p>
-                                )}
+                                  {doctor.doctorProfile?.city && (
+                                    <p className="text-xs text-gray-500 dark:text-gray-500 flex items-center gap-1">
+                                      <span>📍</span>
+                                      {doctor.doctorProfile.city}
+                                    </p>
+                                  )}
                               </div>
                             </div>
                             <Button
-                              onClick={() => {
-                                setSelectedDoctorForCall(doctor);
-                                setCallConfirmDialogOpen(true);
-                              }}
+                                onClick={() => {
+                                  setSelectedDoctorForCall(doctor);
+                                  setCallConfirmDialogOpen(true);
+                                }}
                               disabled={initiateCallMutation.isPending || !!activeCall}
                               data-testid={`button-call-doctor-${doctor.id}`}
-                              size="lg"
+                                size="lg"
+                                className="rounded-xl bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-300 px-6 font-medium"
                             >
                               <Phone className="h-4 w-4 mr-2" />
                               {activeCall ? "In Call" : "Call"}
@@ -1149,29 +1171,21 @@ export default function DoctorDashboard() {
                         ))}
                       </div>
                     )}
-                  </CardContent>
-                </Card>
+                    </div>
 
-                {/* Call History */}
-                <div className="mt-8">
-                  <div className="mb-4">
-                    <h2 className="text-2xl font-bold">Call History</h2>
-                    <p className="text-muted-foreground">
-                      View your past doctor-to-doctor calls with summaries
-                    </p>
-                  </div>
-                <Card className="border-2">
-                  <CardHeader>
-                    <CardTitle>Recent Calls</CardTitle>
-                    <CardDescription>
-                      Browse and download transcripts from your previous consultations
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
+                    {/* Call History Section */}
+                    <div>
+                      <div className="mb-6">
+                        <h2 className="text-2xl font-semibold mb-1.5 tracking-tight">Call History</h2>
+                        <p className="text-gray-500 dark:text-gray-400 text-sm">
+                          Review past consultations and download transcripts
+                        </p>
+                      </div>
+
                     {loadingCallHistory ? (
-                      <div className="space-y-3">
+                        <div className="space-y-4">
                         {[1, 2, 3].map(i => (
-                          <Skeleton key={i} className="h-24" />
+                            <Skeleton key={i} className="h-32 rounded-2xl" />
                         ))}
                       </div>
                     ) : callHistory && callHistory.length > 0 ? (
@@ -1187,42 +1201,56 @@ export default function DoctorDashboard() {
                           return (
                             <div
                               key={call.id}
-                              className="p-5 rounded-lg border-2 hover:border-primary/50 transition-colors space-y-3"
+                                className="group relative p-6 rounded-2xl bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border border-gray-200/60 dark:border-gray-800/60 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-gray-900/50 transition-all duration-200 ease-out will-change-transform"
                             >
-                              <div className="flex items-start justify-between">
-                                <div className="flex-1">
-                                  <div className="flex items-center gap-3 mb-2">
-                                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                                      <Phone className="h-5 w-5 text-primary" />
-                                    </div>
-                                    <div>
-                                      <p className="font-semibold text-base">
-                                      {isCaller ? "Called" : "Received call from"} {otherDoctor?.name || "Unknown Doctor"}
-                                    </p>
-                                      <div className="flex items-center gap-4 text-sm text-muted-foreground mt-1">
-                                    {callDate && (
-                                      <span>{callDate.toLocaleString()}</span>
-                                    )}
-                                    {callDuration !== null && (
-                                          <span>• Duration: {callDuration} min</span>
-                                    )}
-                                    {call.isLive && (
-                                          <span className="text-green-600 font-medium">• Live</span>
-                                    )}
-                                    {call.endedAt && (
-                                          <span className="text-muted-foreground">• Ended</span>
-                                    )}
+                                <div className="flex items-start justify-between gap-4 mb-4">
+                                  <div className="flex items-start gap-4 flex-1 min-w-0">
+                                    <div className="flex-shrink-0">
+                                      <div className="h-12 w-12 rounded-full bg-gradient-to-br from-green-500/10 to-emerald-500/10 dark:from-green-500/20 dark:to-emerald-500/20 flex items-center justify-center ring-2 ring-gray-100 dark:ring-gray-800">
+                                        <Phone className="h-6 w-6 text-green-600 dark:text-green-400" />
                                       </div>
                                     </div>
+                                    <div className="flex-1 min-w-0">
+                                      <p className="font-semibold text-base mb-1.5 text-gray-900 dark:text-gray-100">
+                                      {isCaller ? "Called" : "Received call from"} {otherDoctor?.name || "Unknown Doctor"}
+                                    </p>
+                                      <div className="flex flex-wrap items-center gap-3 text-xs text-gray-500 dark:text-gray-400">
+                                    {callDate && (
+                                          <span className="flex items-center gap-1.5">
+                                            <span>📅</span>
+                                            {callDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                                            <span className="text-gray-400">at</span>
+                                            {callDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })}
+                                          </span>
+                                    )}
+                                    {callDuration !== null && (
+                                          <span className="flex items-center gap-1.5">
+                                            <span>⏱️</span>
+                                            {callDuration} {callDuration === 1 ? 'minute' : 'minutes'}
+                                          </span>
+                                    )}
+                                    {call.isLive && (
+                                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium text-xs">
+                                            <span className="relative flex h-2 w-2">
+                                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                                              <span className="relative inline-flex rounded-full h-2 w-2 bg-green-500"></span>
+                                            </span>
+                                            Live
+                                          </span>
+                                    )}
+                                        {call.endedAt && !call.isLive && (
+                                          <span className="text-gray-400 dark:text-gray-500">Completed</span>
+                                    )}
+                                      </div>
                                   </div>
                                 </div>
                               </div>
                               
                               {call.summaryText && (
-                                <div className="mt-4 pt-4 border-t">
-                                  {/* Only show download buttons if there's a transcript (real summary) */}
-                                  {call.transcriptText && (
-                                    <div className="flex gap-2 mb-3">
+                                  <div className="mt-5 pt-5 border-t border-gray-200/60 dark:border-gray-800/60">
+                                    {/* Download buttons */}
+                                    {call.transcriptText && (
+                                      <div className="flex gap-2 mb-4">
                                       <Button
                                         variant="outline"
                                         size="sm"
@@ -1230,9 +1258,9 @@ export default function DoctorDashboard() {
                                           const url = `/api/doctor/call/${call.id}/download/pdf`;
                                           window.open(url, '_blank');
                                         }}
-                                        className="h-8"
+                                          className="rounded-xl border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 h-9 px-4 text-xs font-medium transition-all duration-200"
                                       >
-                                        <Download className="h-3 w-3 mr-1" />
+                                          <Download className="h-3.5 w-3.5 mr-1.5" />
                                         PDF
                                       </Button>
                                       <Button
@@ -1242,95 +1270,102 @@ export default function DoctorDashboard() {
                                           const url = `/api/doctor/call/${call.id}/download/doc`;
                                           window.open(url, '_blank');
                                         }}
-                                        className="h-8"
+                                          className="rounded-xl border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 h-9 px-4 text-xs font-medium transition-all duration-200"
                                       >
-                                        <FileText className="h-3 w-3 mr-1" />
+                                          <FileText className="h-3.5 w-3.5 mr-1.5" />
                                         DOC
                                       </Button>
                                     </div>
-                                  )}
-                                  <details className="mt-4">
-                                    <summary className="text-sm font-semibold cursor-pointer text-primary hover:text-primary/80 transition-colors">
-                                      Call Summary
-                                    </summary>
-                                    <div className="mt-3 p-4 bg-muted/50 rounded-lg">
-                                      <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
-                                        {call.summaryText}
-                                      </p>
-                                    </div>
-                                  </details>
-                                  {call.transcriptText && (
-                                    <details className="mt-4">
-                                      <summary className="text-sm font-semibold cursor-pointer text-primary hover:text-primary/80 transition-colors">
-                                        View Full Transcript
+                                    )}
+                                    
+                                    {/* Call Summary */}
+                                    <details className="group">
+                                      <summary className="cursor-pointer flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 list-none">
+                                        <span className="select-none">Call Summary</span>
+                                        <span className="text-gray-400 group-open:rotate-180 transition-transform duration-200">▼</span>
                                       </summary>
-                                      <div className="mt-3 p-4 bg-muted rounded-lg">
-                                        <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                                      <div className="mt-4 p-5 rounded-xl bg-gray-50/80 dark:bg-gray-800/50 border border-gray-200/50 dark:border-gray-700/50">
+                                        <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
+                                    {call.summaryText}
+                                  </p>
+                                      </div>
+                                    </details>
+                                    
+                                    {/* Full Transcript */}
+                                  {call.transcriptText && (
+                                      <details className="group mt-4">
+                                        <summary className="cursor-pointer flex items-center gap-2 text-sm font-semibold text-gray-900 dark:text-gray-100 hover:text-blue-600 dark:hover:text-blue-400 transition-colors duration-200 list-none">
+                                          <span className="select-none">View Full Transcript</span>
+                                          <span className="text-gray-400 group-open:rotate-180 transition-transform duration-200">▼</span>
+                                      </summary>
+                                        <div className="mt-4 p-5 rounded-xl bg-gray-50/80 dark:bg-gray-800/50 border border-gray-200/50 dark:border-gray-700/50 max-h-96 overflow-y-auto">
+                                          <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
                                           {call.transcriptText}
                                         </p>
                                       </div>
                                     </details>
                                   )}
-                                  {/* TEMPORARY: Regenerate Summary button for testing (if transcript exists) */}
-                                  {call.transcriptText && (call.endedAt || !call.isLive) && (
-                                    <div className="mt-3">
-                                      <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => {
-                                          setSelectedCallForSummary({ 
-                                            id: call.id, 
-                                            calleeName: call.callee?.name || call.caller?.name || "Doctor" 
-                                          });
-                                          setSummaryConfirmDialogOpen(true);
-                                        }}
-                                        className="h-7 text-xs border-orange-300 text-orange-600 hover:bg-orange-50"
-                                        disabled={generateSummaryMutation.isPending}
-                                        title="Temporary: Regenerate summary for testing"
-                                      >
-                                        <RefreshCw className={`h-3 w-3 mr-1 ${generateSummaryMutation.isPending && selectedCallForSummary?.id === call.id ? "animate-spin" : ""}`} />
-                                        {generateSummaryMutation.isPending && selectedCallForSummary?.id === call.id ? "Regenerating..." : "Regenerate Summary"}
-                                      </Button>
-                                    </div>
-                                  )}
+                                    
+                                    {/* TEMPORARY: Regenerate Summary button */}
+                                    {call.transcriptText && (call.endedAt || !call.isLive) && (
+                                      <div className="mt-4">
+                                        <Button
+                                          variant="outline"
+                                          size="sm"
+                                          onClick={() => {
+                                            setSelectedCallForSummary({ 
+                                              id: call.id, 
+                                              calleeName: call.callee?.name || call.caller?.name || "Doctor" 
+                                            });
+                                            setSummaryConfirmDialogOpen(true);
+                                          }}
+                                          className="rounded-xl border-orange-200 dark:border-orange-800 text-orange-600 dark:text-orange-400 hover:bg-orange-50 dark:hover:bg-orange-900/20 h-8 px-3 text-xs font-medium transition-all duration-200"
+                                          disabled={generateSummaryMutation.isPending}
+                                          title="Temporary: Regenerate summary for testing"
+                                        >
+                                          <RefreshCw className={`h-3 w-3 mr-1.5 ${generateSummaryMutation.isPending && selectedCallForSummary?.id === call.id ? "animate-spin" : ""}`} />
+                                          {generateSummaryMutation.isPending && selectedCallForSummary?.id === call.id ? "Regenerating..." : "Regenerate Summary"}
+                                        </Button>
+                                      </div>
+                                    )}
                                 </div>
                               )}
                               
                               {call.liveSummary && !call.summaryText && (
-                                <div className="mt-4 pt-4 border-t">
-                                  <p className="text-sm font-semibold mb-2">Live Summary</p>
-                                  <div className="p-4 bg-muted/50 rounded-lg">
-                                    <p className="text-sm text-foreground whitespace-pre-wrap leading-relaxed">
+                                  <div className="mt-5 pt-5 border-t border-gray-200/60 dark:border-gray-800/60">
+                                    <p className="text-sm font-semibold mb-3 text-gray-900 dark:text-gray-100">Live Summary</p>
+                                    <div className="p-5 rounded-xl bg-gray-50/80 dark:bg-gray-800/50 border border-gray-200/50 dark:border-gray-700/50">
+                                      <p className="text-sm text-gray-700 dark:text-gray-300 whitespace-pre-wrap leading-relaxed">
                                     {call.liveSummary}
                                   </p>
-                                  </div>
+                                    </div>
                                 </div>
                               )}
                               
-                              {/* Show Generate Summary button if no transcript exists (meaning no real summary yet) */}
-                              {!call.transcriptText && (call.endedAt || !call.isLive) && (
-                                <div className="mt-4 pt-4 border-t">
-                                  <p className="text-sm text-muted-foreground italic mb-3">
-                                    {call.summaryText && call.summaryText.includes("Call completed. Duration:") 
-                                      ? "Basic summary available. Generate AI-powered summary with transcript and detailed insights."
-                                      : "No summary available for this call."
-                                    }
+                                {/* Generate Summary button */}
+                                {!call.transcriptText && (call.endedAt || !call.isLive) && (
+                                  <div className="mt-5 pt-5 border-t border-gray-200/60 dark:border-gray-800/60">
+                                    <p className="text-sm text-gray-500 dark:text-gray-400 mb-4 leading-relaxed">
+                                      {call.summaryText && call.summaryText.includes("Call completed. Duration:") 
+                                        ? "Basic summary available. Generate AI-powered summary with transcript and detailed insights."
+                                        : "No summary available for this call."
+                                      }
                                   </p>
                                   <Button
                                     variant="outline"
                                     size="sm"
-                                    onClick={() => {
-                                      setSelectedCallForSummary({ 
-                                        id: call.id, 
-                                        calleeName: call.callee?.name || call.caller?.name || "Doctor" 
-                                      });
-                                      setSummaryConfirmDialogOpen(true);
-                                    }}
-                                    className="h-7 text-xs"
-                                    disabled={generateSummaryMutation.isPending}
-                                  >
-                                    <FileText className="h-3 w-3 mr-1" />
-                                    {generateSummaryMutation.isPending && selectedCallForSummary?.id === call.id ? "Generating..." : "Generate Summary"}
+                                      onClick={() => {
+                                        setSelectedCallForSummary({ 
+                                          id: call.id, 
+                                          calleeName: call.callee?.name || call.caller?.name || "Doctor" 
+                                        });
+                                        setSummaryConfirmDialogOpen(true);
+                                      }}
+                                      className="rounded-xl border-gray-300 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-700 dark:text-gray-300 h-9 px-4 text-xs font-medium transition-all duration-200"
+                                      disabled={generateSummaryMutation.isPending}
+                                    >
+                                      <FileText className="h-3.5 w-3.5 mr-1.5" />
+                                      {generateSummaryMutation.isPending && selectedCallForSummary?.id === call.id ? "Generating..." : "Generate Summary"}
                                   </Button>
                                 </div>
                               )}
@@ -1339,16 +1374,18 @@ export default function DoctorDashboard() {
                         })}
                       </div>
                     ) : (
-                      <div className="py-12 text-center">
-                        <Phone className="h-12 w-12 mx-auto text-muted-foreground/50 mb-4" />
-                        <h3 className="font-semibold text-lg mb-2">No call history yet</h3>
-                        <p className="text-muted-foreground">Your past calls will appear here</p>
+                        <div className="py-20 text-center rounded-3xl bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm border border-gray-200/50 dark:border-gray-800/50 shadow-sm">
+                          <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 mb-4">
+                            <Phone className="h-8 w-8 text-gray-400 dark:text-gray-500" />
+                          </div>
+                          <h3 className="font-semibold text-lg mb-1.5 text-gray-900 dark:text-gray-100">No call history yet</h3>
+                          <p className="text-sm text-gray-500 dark:text-gray-400">Your past calls will appear here</p>
                       </div>
                     )}
 
                     {/* Pagination */}
                     {pagination && pagination.totalPages > 1 && (
-                      <div className="mt-6">
+                        <div className="mt-8 flex flex-col items-center gap-4">
                         <Pagination>
                           <PaginationContent>
                             <PaginationItem>
@@ -1360,23 +1397,21 @@ export default function DoctorDashboard() {
                                     setCallHistoryPage(callHistoryPage - 1);
                                   }
                                 }}
-                                className={!pagination.hasPreviousPage ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                                  className={`rounded-xl ${!pagination.hasPreviousPage ? "pointer-events-none opacity-50" : "cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"}`}
                               />
                             </PaginationItem>
                             
                             {Array.from({ length: pagination.totalPages }, (_, i) => i + 1).map((pageNum) => {
-                              // Show first page, last page, current page, and pages around current
                               const showPage = 
                                 pageNum === 1 ||
                                 pageNum === pagination.totalPages ||
                                 (pageNum >= callHistoryPage - 1 && pageNum <= callHistoryPage + 1);
                               
                               if (!showPage) {
-                                // Show ellipsis
                                 if (pageNum === callHistoryPage - 2 || pageNum === callHistoryPage + 2) {
                                   return (
                                     <PaginationItem key={pageNum}>
-                                      <span className="px-4 py-2">...</span>
+                                        <span className="px-3 py-2 text-gray-400">...</span>
                                     </PaginationItem>
                                   );
                                 }
@@ -1392,7 +1427,7 @@ export default function DoctorDashboard() {
                                       setCallHistoryPage(pageNum);
                                     }}
                                     isActive={pageNum === callHistoryPage}
-                                    className="cursor-pointer"
+                                      className="cursor-pointer rounded-xl"
                                   >
                                     {pageNum}
                                   </PaginationLink>
@@ -1409,19 +1444,17 @@ export default function DoctorDashboard() {
                                     setCallHistoryPage(callHistoryPage + 1);
                                   }
                                 }}
-                                className={!pagination.hasNextPage ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                                  className={`rounded-xl ${!pagination.hasNextPage ? "pointer-events-none opacity-50" : "cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-800"}`}
                               />
                             </PaginationItem>
                           </PaginationContent>
                         </Pagination>
-                        <div className="text-center text-sm text-muted-foreground mt-2">
+                          <div className="text-center text-xs text-gray-500 dark:text-gray-400">
                           Showing {((callHistoryPage - 1) * 5) + 1} to {Math.min(callHistoryPage * 5, pagination.totalCalls)} of {pagination.totalCalls} calls
                         </div>
                       </div>
                     )}
-                  </CardContent>
-                </Card>
-                </div>
+                    </div>
                   </div>
                 </section>
               </div>
@@ -1977,5 +2010,7 @@ export default function DoctorDashboard() {
         </DialogContent>
       </Dialog>
     </SidebarProvider>
+    <TeddyAssistant userRole="DOCTOR" />
+    </>
   );
 }
