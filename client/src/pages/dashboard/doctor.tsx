@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -54,6 +54,14 @@ import {
 import { useAuth } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   LayoutDashboard,
   Users,
@@ -73,6 +81,8 @@ import {
   Check,
   AlertCircle,
   XCircle,
+  Search,
+  Filter,
 } from "lucide-react";
 import type { SurveyRequest, User, DoctorProfile, LinkRecord } from "@shared/schema";
 
@@ -103,6 +113,12 @@ export default function DoctorDashboard() {
   const [clearStaleCallsDialogOpen, setClearStaleCallsDialogOpen] = useState(false);
   const [summaryErrorDialogOpen, setSummaryErrorDialogOpen] = useState(false);
   const [summaryError, setSummaryError] = useState<string | null>(null);
+  
+  // Search and filter state for available doctors
+  const [doctorSearchQuery, setDoctorSearchQuery] = useState("");
+  const [selectedSpecialty, setSelectedSpecialty] = useState<string>("all");
+  const [doctorsPage, setDoctorsPage] = useState(1);
+  const doctorsPerPage = 5;
 
   const { data: surveys, isLoading: loadingSurveys } = useQuery<SurveyWithPatient[]>({
     queryKey: ["/api/doctor/surveys"],
@@ -147,14 +163,138 @@ export default function DoctorDashboard() {
     },
     enabled: !!user && activeTab === "calls",
     refetchInterval: (query) => {
-      // Refetch more frequently (5 seconds) if there's an active call, otherwise 10 seconds
+      // Refetch more frequently (2 seconds) if there's an active call, otherwise 5 seconds
+      // This ensures Twilio status changes are reflected quickly
       const hasActiveCall = query.state.data?.calls?.some((call: any) => call.isLive && !call.endedAt);
-      return hasActiveCall ? 5000 : 10000;
+      return hasActiveCall ? 2000 : 5000;
     },
   });
 
+  // Fetch recent calls for "Recent Calls" section (first page with more results)
+  const { data: recentCallsData } = useQuery({
+    queryKey: ["/api/doctor/calls", "recent"],
+    queryFn: async () => {
+      const response = await fetch(`/api/doctor/calls?page=1&limit=20`, {
+        credentials: "include",
+      });
+      if (!response.ok) throw new Error("Failed to fetch recent calls");
+      return response.json();
+    },
+    enabled: !!user && (activeTab === "calls" || activeTab === "dashboard"),
+    refetchInterval: 10000, // Refetch every 10 seconds
+  });
+
   const callHistory = callHistoryData?.calls || [];
+  const recentCalls = recentCallsData?.calls || [];
   const pagination = callHistoryData?.pagination;
+
+  // Calculate call frequency for each doctor
+  const doctorCallFrequency = useMemo(() => {
+    const frequency: Record<string, number> = {};
+    callHistory.forEach((call: any) => {
+      const otherDoctorId = call.callerDoctorId === user?.id ? call.calleeDoctorId : call.callerDoctorId;
+      if (otherDoctorId) {
+        frequency[otherDoctorId] = (frequency[otherDoctorId] || 0) + 1;
+      }
+    });
+    return frequency;
+  }, [callHistory, user?.id]);
+
+  // Filter and sort doctors
+  const filteredAndSortedDoctors = useMemo(() => {
+    if (!doctors) return [];
+    
+    let filtered = doctors.filter(d => d.id !== user?.id);
+    
+    // Apply search filter
+    if (doctorSearchQuery.trim()) {
+      const query = doctorSearchQuery.toLowerCase();
+      filtered = filtered.filter(doctor => 
+        doctor.name.toLowerCase().includes(query) ||
+        doctor.email?.toLowerCase().includes(query) ||
+        doctor.doctorProfile?.specialty?.toLowerCase().includes(query) ||
+        doctor.doctorProfile?.city?.toLowerCase().includes(query)
+      );
+    }
+    
+    // Apply specialty filter
+    if (selectedSpecialty !== "all") {
+      filtered = filtered.filter(doctor => 
+        doctor.doctorProfile?.specialty === selectedSpecialty
+      );
+    }
+    
+    // Sort by call frequency (most frequently used first), then by name
+    filtered.sort((a, b) => {
+      const aFreq = doctorCallFrequency[a.id] || 0;
+      const bFreq = doctorCallFrequency[b.id] || 0;
+      if (bFreq !== aFreq) {
+        return bFreq - aFreq;
+      }
+      return a.name.localeCompare(b.name);
+    });
+    
+    return filtered;
+  }, [doctors, user?.id, doctorSearchQuery, selectedSpecialty, doctorCallFrequency]);
+
+  // Get unique specialties for filter dropdown
+  const specialties = useMemo(() => {
+    if (!doctors) return [];
+    const specialtySet = new Set<string>();
+    doctors.forEach(doctor => {
+      if (doctor.doctorProfile?.specialty) {
+        specialtySet.add(doctor.doctorProfile.specialty);
+      }
+    });
+    return Array.from(specialtySet).sort();
+  }, [doctors]);
+
+  // Paginate doctors
+  const paginatedDoctors = useMemo(() => {
+    const startIndex = (doctorsPage - 1) * doctorsPerPage;
+    return filteredAndSortedDoctors.slice(startIndex, startIndex + doctorsPerPage);
+  }, [filteredAndSortedDoctors, doctorsPage, doctorsPerPage]);
+
+  const totalDoctorsPages = Math.ceil(filteredAndSortedDoctors.length / doctorsPerPage);
+
+  // Extract recent doctors from call history for quick connect
+  const recentDoctors = useMemo(() => {
+    if (!recentCalls || recentCalls.length === 0) return [];
+    
+    // Get unique doctors from recent calls (last 10 calls)
+    const topRecentCalls = recentCalls.slice(0, 10);
+    const doctorMap = new Map<string, { doctor: DoctorWithProfile; lastCallDate: Date; callCount: number }>();
+    
+    topRecentCalls.forEach((call: any) => {
+      const otherDoctor = call.callerDoctorId === user?.id ? call.callee : call.caller;
+      const otherDoctorId = call.callerDoctorId === user?.id ? call.calleeDoctorId : call.callerDoctorId;
+      
+      if (otherDoctor && otherDoctorId && otherDoctorId !== user?.id) {
+        const existing = doctorMap.get(otherDoctorId);
+        const callDate = call.startedAt ? new Date(call.startedAt) : new Date();
+        
+        if (!existing || callDate > existing.lastCallDate) {
+          // Find the full doctor object from the doctors list
+          const fullDoctor = doctors?.find(d => d.id === otherDoctorId);
+          if (fullDoctor) {
+            doctorMap.set(otherDoctorId, {
+              doctor: fullDoctor,
+              lastCallDate: callDate,
+              callCount: (existing?.callCount || 0) + 1
+            });
+          }
+        } else {
+          existing.callCount += 1;
+        }
+      }
+    });
+    
+    // Convert to array and sort by most recent call
+    return Array.from(doctorMap.values())
+      .sort((a, b) => b.lastCallDate.getTime() - a.lastCallDate.getTime())
+      .slice(0, 5) // Show only top 5 recent doctors
+      .map(item => item.doctor);
+  }, [recentCalls, doctors, user?.id]);
 
   // Fetch total completed calls count (fetch all calls to count completed ones)
   const { data: totalCompletedCalls } = useQuery({
@@ -423,17 +563,40 @@ export default function DoctorDashboard() {
   // Poll for survey updates
   const pollSurveysMutation = useMutation({
     mutationFn: async () => {
-      return apiRequest("POST", "/api/redcap/poll-surveys");
+      const response = await apiRequest("POST", "/api/redcap/poll-surveys");
+      const data = await response.json();
+      return data;
     },
     onSuccess: (data) => {
+      // Skip if REDCap is not configured (silent failure)
+      if (data?.message === "REDCap API not configured") {
+        return;
+      }
+      
+      // Check if surveys were updated (updated is a number, details.updated is the array)
+      const updatedCount = data?.updated || 0;
+      const updatedIds = data?.details?.updated || [];
+      
+      // Invalidate and refetch queries to refresh data immediately
       queryClient.invalidateQueries({ queryKey: ["/api/doctor/surveys"] });
       queryClient.invalidateQueries({ queryKey: ["/api/doctor/surveys/with-data"] });
-      // Only show toast if surveys were actually updated
-      if (data && data.updated > 0) {
+      
+      // Explicitly refetch to ensure UI updates immediately
+      queryClient.refetchQueries({ queryKey: ["/api/doctor/surveys"] });
+      queryClient.refetchQueries({ queryKey: ["/api/doctor/surveys/with-data"] });
+      
+      if (updatedCount > 0 && updatedIds.length > 0) {
         toast({
           title: "Surveys updated",
-          description: `${data.updated} survey(s) have been marked as completed.`,
+          description: `${updatedCount} survey(s) have been marked as completed.`,
         });
+      }
+    },
+    onError: (error) => {
+      // Silently handle polling errors to avoid spam
+      // Don't log errors for REDCap not configured
+      if (error instanceof Error && !error.message.includes("REDCap API not configured")) {
+        console.debug("Survey polling error:", error);
       }
     },
   });
@@ -512,8 +675,8 @@ export default function DoctorDashboard() {
         const calls = response.calls || [];
         const currentCall = calls.find((c: any) => c.id === currentCallId);
         
-        // If call is no longer live, clear active call state
-        if (currentCall && !currentCall.isLive) {
+        // If call is no longer live or has ended, clear active call state
+        if (currentCall && (!currentCall.isLive || currentCall.endedAt)) {
           setActiveCall(null);
           setCurrentCallId(null);
           queryClient.invalidateQueries({ queryKey: ["/api/doctor/calls"] });
@@ -526,7 +689,7 @@ export default function DoctorDashboard() {
         // Silently fail polling errors
         console.error("Error polling call status:", error);
       }
-    }, 3000); // Poll every 3 seconds
+    }, 2000); // Poll every 2 seconds to sync with Twilio status quickly
     
     return () => clearInterval(pollInterval);
   }, [activeCall, currentCallId]);
@@ -620,7 +783,7 @@ export default function DoctorDashboard() {
                   
                   // If still not found, try to find it from call history (most recent live call)
                   if (!callId && callHistoryData?.calls) {
-                    const liveCall = callHistoryData.calls.find((c: any) => c.isLive);
+                    const liveCall = callHistoryData.calls.find((c: any) => c.isLive && !c.endedAt);
                     if (liveCall) {
                       callId = liveCall.id;
                       setCurrentCallId(liveCall.id);
@@ -631,7 +794,7 @@ export default function DoctorDashboard() {
                   console.log("End Call button clicked in dialog");
                   console.log("  currentCallId:", currentCallId);
                   console.log("  activeCall?.callId:", activeCall?.callId);
-                  console.log("  callHistory live call:", callHistoryData?.calls?.find((c: any) => c.isLive)?.id);
+                  console.log("  callHistory live call:", callHistoryData?.calls?.find((c: any) => c.isLive && !c.endedAt)?.id);
                   console.log("  Using callId:", callId);
                   
                   if (callId) {
@@ -810,6 +973,62 @@ export default function DoctorDashboard() {
                         </CardContent>
                       </Card>
                 </div>
+
+                {/* Recent Calls Section */}
+                {recentDoctors.length > 0 && (
+                  <div className="mb-8">
+                    <div className="mb-6">
+                      <h2 className="text-2xl font-semibold mb-1.5 tracking-tight">Recent Calls</h2>
+                      <p className="text-gray-500 dark:text-gray-400 text-sm">
+                        Quick connect with doctors you've called recently
+                      </p>
+                    </div>
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+                      {recentDoctors.map(doctor => {
+                        const callCount = doctorCallFrequency[doctor.id] || 0;
+                        return (
+                          <Card
+                            key={doctor.id}
+                            className="group relative border-2 hover:border-blue-300 dark:hover:border-blue-700 transition-all duration-200 hover:shadow-lg"
+                          >
+                            <CardContent className="p-5">
+                              <div className="flex flex-col items-center gap-3">
+                                <div className="h-14 w-14 rounded-full bg-gradient-to-br from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 flex items-center justify-center flex-shrink-0 ring-2 ring-gray-100 dark:ring-gray-800 group-hover:ring-blue-200 dark:group-hover:ring-blue-900/50 transition-all duration-300">
+                                  <Users className="h-7 w-7 text-blue-600 dark:text-blue-400" />
+                                </div>
+                                <div className="flex-1 w-full text-center min-w-0">
+                                  <p className="font-semibold text-sm text-gray-900 dark:text-gray-100 truncate">
+                                    {doctor.name}
+                                  </p>
+                                  <p className="text-xs text-gray-600 dark:text-gray-400 truncate mt-0.5">
+                                    {doctor.doctorProfile?.specialty || "Healthcare Provider"}
+                                  </p>
+                                  {callCount > 0 && (
+                                    <p className="text-xs text-gray-500 dark:text-gray-500 mt-1">
+                                      {callCount} {callCount === 1 ? 'call' : 'calls'}
+                                    </p>
+                                  )}
+                                </div>
+                                <Button
+                                  onClick={() => {
+                                    setSelectedDoctorForCall(doctor);
+                                    setCallConfirmDialogOpen(true);
+                                  }}
+                                  disabled={initiateCallMutation.isPending || !!activeCall}
+                                  size="sm"
+                                  className="w-full rounded-lg bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white shadow-sm hover:shadow-md transition-all duration-200"
+                                >
+                                  <Phone className="h-4 w-4 mr-2" />
+                                  Call
+                                </Button>
+                              </div>
+                            </CardContent>
+                          </Card>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid lg:grid-cols-3 gap-6">
                   <div className="lg:col-span-2">
@@ -1096,6 +1315,63 @@ export default function DoctorDashboard() {
 
                 <section className="py-12 px-6 bg-gray-50/30 dark:bg-gray-950/30 min-h-full">
                   <div className="max-w-7xl mx-auto space-y-10">
+                    {/* Recent Calls Section */}
+                    {recentDoctors.length > 0 && (
+                      <div>
+                        <div className="mb-6">
+                          <h2 className="text-2xl font-semibold mb-1.5 tracking-tight">Recent Calls</h2>
+                          <p className="text-gray-500 dark:text-gray-400 text-sm">
+                            Quick connect with doctors you've called recently
+                          </p>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {recentDoctors.map(doctor => {
+                            const callCount = doctorCallFrequency[doctor.id] || 0;
+                            return (
+                              <Card
+                                key={doctor.id}
+                                className="group relative border-2 hover:border-blue-300 dark:hover:border-blue-700 transition-all duration-200 hover:shadow-lg"
+                              >
+                                <CardContent className="p-5">
+                                  <div className="flex items-center justify-between gap-4">
+                                    <div className="flex items-center gap-3 flex-1 min-w-0">
+                                      <div className="h-12 w-12 rounded-full bg-gradient-to-br from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 flex items-center justify-center flex-shrink-0 ring-2 ring-gray-100 dark:ring-gray-800">
+                                        <Users className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+                                      </div>
+                                      <div className="flex-1 min-w-0">
+                                        <p className="font-semibold text-base text-gray-900 dark:text-gray-100 truncate">
+                                          {doctor.name}
+                                        </p>
+                                        <p className="text-sm text-gray-600 dark:text-gray-400 truncate">
+                                          {doctor.doctorProfile?.specialty || "Healthcare Provider"}
+                                        </p>
+                                        {callCount > 0 && (
+                                          <p className="text-xs text-gray-500 dark:text-gray-500 mt-0.5">
+                                            {callCount} {callCount === 1 ? 'call' : 'calls'}
+                                          </p>
+                                        )}
+                                      </div>
+                                    </div>
+                                    <Button
+                                      onClick={() => {
+                                        setSelectedDoctorForCall(doctor);
+                                        setCallConfirmDialogOpen(true);
+                                      }}
+                                      disabled={initiateCallMutation.isPending || !!activeCall}
+                                      size="sm"
+                                      className="rounded-lg bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white shadow-sm hover:shadow-md transition-all duration-200 flex-shrink-0"
+                                    >
+                                      <Phone className="h-4 w-4" />
+                                    </Button>
+                                  </div>
+                                </CardContent>
+                              </Card>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
                     {/* Available Doctors Section */}
                   <div>
                       <div className="flex items-center justify-between mb-6">
@@ -1116,7 +1392,56 @@ export default function DoctorDashboard() {
                   </Button>
                 </div>
 
-                    {doctors?.filter(d => d.id !== user?.id).length === 0 ? (
+                    {/* Search and Filter Controls */}
+                    <div className="flex flex-col sm:flex-row gap-4 mb-6">
+                      <div className="relative flex-1">
+                        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+                        <Input
+                          type="text"
+                          placeholder="Search doctors by name, email, specialty, or city..."
+                          value={doctorSearchQuery}
+                          onChange={(e) => {
+                            setDoctorSearchQuery(e.target.value);
+                            setDoctorsPage(1); // Reset to first page on search
+                          }}
+                          className="pl-10 rounded-xl border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80"
+                        />
+                      </div>
+                      <Select
+                        value={selectedSpecialty}
+                        onValueChange={(value) => {
+                          setSelectedSpecialty(value);
+                          setDoctorsPage(1); // Reset to first page on filter change
+                        }}
+                      >
+                        <SelectTrigger className="w-full sm:w-[200px] rounded-xl border-gray-200 dark:border-gray-800 bg-white/80 dark:bg-gray-900/80">
+                          <Filter className="h-4 w-4 mr-2" />
+                          <SelectValue placeholder="All Specialties" />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="all">All Specialties</SelectItem>
+                          {specialties.map(specialty => (
+                            <SelectItem key={specialty} value={specialty}>
+                              {specialty}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+
+                    {/* Results count */}
+                    {filteredAndSortedDoctors.length > 0 && (
+                      <p className="text-sm text-gray-500 dark:text-gray-400 mb-4">
+                        Showing {((doctorsPage - 1) * doctorsPerPage) + 1}-{Math.min(doctorsPage * doctorsPerPage, filteredAndSortedDoctors.length)} of {filteredAndSortedDoctors.length} doctor{filteredAndSortedDoctors.length !== 1 ? 's' : ''}
+                        {Object.keys(doctorCallFrequency).length > 0 && (
+                          <span className="ml-2 text-xs">
+                            (sorted by most frequently used)
+                          </span>
+                        )}
+                      </p>
+                    )}
+
+                    {filteredAndSortedDoctors.length === 0 ? (
                         <div className="py-20 text-center rounded-3xl bg-white/60 dark:bg-gray-900/60 backdrop-blur-sm border border-gray-200/50 dark:border-gray-800/50 shadow-sm">
                           <div className="inline-flex items-center justify-center w-16 h-16 rounded-full bg-gray-100 dark:bg-gray-800 mb-4">
                             <Users className="h-8 w-8 text-gray-400 dark:text-gray-500" />
@@ -1125,51 +1450,96 @@ export default function DoctorDashboard() {
                           <p className="text-sm text-gray-500 dark:text-gray-400">
                             Other doctors will appear here when they join
                           </p>
-                      </div>
+                        </div>
                     ) : (
-                        <div className="grid gap-3">
-                        {doctors?.filter(d => d.id !== user?.id).map(doctor => (
-                          <div
-                            key={doctor.id}
-                              className="group relative flex items-center justify-between gap-6 p-5 rounded-2xl bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border border-gray-200/60 dark:border-gray-800/60 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-gray-900/50 transition-all duration-200 ease-out will-change-transform"
-                          >
-                              <div className="flex items-center gap-4 flex-1 min-w-0">
-                                <div className="relative flex-shrink-0">
-                                  <div className="h-14 w-14 rounded-full bg-gradient-to-br from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 flex items-center justify-center ring-2 ring-gray-100 dark:ring-gray-800 group-hover:ring-blue-200 dark:group-hover:ring-blue-900/50 transition-all duration-300">
-                                    <Users className="h-7 w-7 text-blue-600 dark:text-blue-400" />
-                              </div>
+                        <>
+                          <div className="grid gap-3">
+                            {paginatedDoctors.map(doctor => {
+                              const callCount = doctorCallFrequency[doctor.id] || 0;
+                              return (
+                                <div
+                                  key={doctor.id}
+                                  className="group relative flex items-center justify-between gap-6 p-5 rounded-2xl bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border border-gray-200/60 dark:border-gray-800/60 hover:border-gray-300 dark:hover:border-gray-700 hover:shadow-lg hover:shadow-gray-200/50 dark:hover:shadow-gray-900/50 transition-all duration-200 ease-out will-change-transform"
+                                >
+                                  <div className="flex items-center gap-4 flex-1 min-w-0">
+                                    <div className="relative flex-shrink-0">
+                                      <div className="h-14 w-14 rounded-full bg-gradient-to-br from-blue-500/10 to-purple-500/10 dark:from-blue-500/20 dark:to-purple-500/20 flex items-center justify-center ring-2 ring-gray-100 dark:ring-gray-800 group-hover:ring-blue-200 dark:group-hover:ring-blue-900/50 transition-all duration-300">
+                                        <Users className="h-7 w-7 text-blue-600 dark:text-blue-400" />
+                                      </div>
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                      <div className="flex items-center gap-2 mb-0.5">
+                                        <p className="font-semibold text-base text-gray-900 dark:text-gray-100 truncate">
+                                          {doctor.name}
+                                        </p>
+                                        {callCount > 0 && (
+                                          <span className="inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">
+                                            {callCount} {callCount === 1 ? 'call' : 'calls'}
+                                          </span>
+                                        )}
+                                      </div>
+                                      <p className="text-sm text-gray-600 dark:text-gray-400 mb-0.5">
+                                        {doctor.doctorProfile?.specialty || "Healthcare Provider"}
+                                      </p>
+                                      {doctor.doctorProfile?.city && (
+                                        <p className="text-xs text-gray-500 dark:text-gray-500 flex items-center gap-1">
+                                          <span>📍</span>
+                                          {doctor.doctorProfile.city}
+                                        </p>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <Button
+                                    onClick={() => {
+                                      setSelectedDoctorForCall(doctor);
+                                      setCallConfirmDialogOpen(true);
+                                    }}
+                                    disabled={initiateCallMutation.isPending || !!activeCall}
+                                    data-testid={`button-call-doctor-${doctor.id}`}
+                                    size="lg"
+                                    className="rounded-xl bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-300 px-6 font-medium"
+                                  >
+                                    <Phone className="h-4 w-4 mr-2" />
+                                    {activeCall ? "In Call" : "Call"}
+                                  </Button>
                                 </div>
-                                <div className="flex-1 min-w-0">
-                                  <p className="font-semibold text-base mb-0.5 text-gray-900 dark:text-gray-100 truncate">
-                                    {doctor.name}
-                                  </p>
-                                  <p className="text-sm text-gray-600 dark:text-gray-400 mb-0.5">
-                                  {doctor.doctorProfile?.specialty || "Healthcare Provider"}
-                                </p>
-                                  {doctor.doctorProfile?.city && (
-                                    <p className="text-xs text-gray-500 dark:text-gray-500 flex items-center gap-1">
-                                      <span>📍</span>
-                                      {doctor.doctorProfile.city}
-                                    </p>
-                                  )}
-                              </div>
-                            </div>
-                            <Button
-                                onClick={() => {
-                                  setSelectedDoctorForCall(doctor);
-                                  setCallConfirmDialogOpen(true);
-                                }}
-                              disabled={initiateCallMutation.isPending || !!activeCall}
-                              data-testid={`button-call-doctor-${doctor.id}`}
-                                size="lg"
-                                className="rounded-xl bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white shadow-lg shadow-blue-500/25 hover:shadow-xl hover:shadow-blue-500/30 transition-all duration-300 px-6 font-medium"
-                            >
-                              <Phone className="h-4 w-4 mr-2" />
-                              {activeCall ? "In Call" : "Call"}
-                            </Button>
+                              );
+                            })}
                           </div>
-                        ))}
-                      </div>
+                          
+                          {/* Pagination */}
+                          {totalDoctorsPages > 1 && (
+                            <div className="flex items-center justify-center mt-6">
+                              <Pagination>
+                                <PaginationContent>
+                                  <PaginationItem>
+                                    <PaginationPrevious
+                                      onClick={() => setDoctorsPage(p => Math.max(1, p - 1))}
+                                      className={doctorsPage === 1 ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                                    />
+                                  </PaginationItem>
+                                  {Array.from({ length: totalDoctorsPages }, (_, i) => i + 1).map(page => (
+                                    <PaginationItem key={page}>
+                                      <PaginationLink
+                                        onClick={() => setDoctorsPage(page)}
+                                        isActive={doctorsPage === page}
+                                        className="cursor-pointer"
+                                      >
+                                        {page}
+                                      </PaginationLink>
+                                    </PaginationItem>
+                                  ))}
+                                  <PaginationItem>
+                                    <PaginationNext
+                                      onClick={() => setDoctorsPage(p => Math.min(totalDoctorsPages, p + 1))}
+                                      className={doctorsPage === totalDoctorsPages ? "pointer-events-none opacity-50" : "cursor-pointer"}
+                                    />
+                                  </PaginationItem>
+                                </PaginationContent>
+                              </Pagination>
+                            </div>
+                          )}
+                        </>
                     )}
                     </div>
 
@@ -1229,7 +1599,7 @@ export default function DoctorDashboard() {
                                             {callDuration} {callDuration === 1 ? 'minute' : 'minutes'}
                                           </span>
                                     )}
-                                    {call.isLive && (
+                                    {call.isLive && !call.endedAt && (
                                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium text-xs">
                                             <span className="relative flex h-2 w-2">
                                               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
@@ -1238,7 +1608,7 @@ export default function DoctorDashboard() {
                                             Live
                                           </span>
                                     )}
-                                        {call.endedAt && !call.isLive && (
+                                        {call.endedAt && (
                                           <span className="text-gray-400 dark:text-gray-500">Completed</span>
                                     )}
                                       </div>
@@ -1327,7 +1697,7 @@ export default function DoctorDashboard() {
                                           {generateSummaryMutation.isPending && selectedCallForSummary?.id === call.id ? "Regenerating..." : "Regenerate Summary"}
                                         </Button>
                                       </div>
-                                    )}
+                                  )}
                                 </div>
                               )}
                               

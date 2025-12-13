@@ -31,21 +31,61 @@ interface RedcapSurveyParticipant {
 }
 
 export class RedcapService {
-  private apiUrl: string;
-  private apiKey: string;
-  private projectId?: string;
+  private _apiUrl?: string;
+  private _apiKey?: string;
+  private _projectId?: string;
+  private _initialized = false;
 
-  constructor() {
-    this.apiUrl = process.env.REDCAP_API_URL || "";
-    this.apiKey = process.env.REDCAP_API_KEY || "";
-    this.projectId = process.env.REDCAP_PROJECT_ID;
+  /**
+   * Lazy-load environment variables (called after dotenv.config())
+   */
+  private initialize() {
+    if (this._initialized) return;
+    
+    this._apiUrl = process.env.REDCAP_API_URL || "";
+    this._apiKey = process.env.REDCAP_API_KEY || "";
+    this._projectId = process.env.REDCAP_PROJECT_ID;
+    this._initialized = true;
+    
+    // Debug logging for REDCap configuration
+    console.log("\n=== REDCap Initialization ===");
+    console.log(`  REDCAP_API_URL: ${this._apiUrl ? `${this._apiUrl.substring(0, 30)}...` : 'NOT SET'}`);
+    console.log(`  REDCAP_API_KEY: ${this._apiKey ? `${this._apiKey.substring(0, 8)}...` : 'NOT SET'}`);
+    console.log(`  REDCAP_PROJECT_ID: ${this._projectId || 'NOT SET'}`);
+    console.log(`  REDCap Configured: ${this.isConfigured() ? '✓ YES' : '✗ NO'}`);
+    console.log("============================\n");
+  }
+
+  /**
+   * Get API URL (lazy-loaded)
+   */
+  private getApiUrl(): string {
+    this.initialize();
+    return this._apiUrl || "";
+  }
+
+  /**
+   * Get API Key (lazy-loaded)
+   */
+  private getApiKey(): string {
+    this.initialize();
+    return this._apiKey || "";
+  }
+
+  /**
+   * Get Project ID (lazy-loaded)
+   */
+  private getProjectId(): string | undefined {
+    this.initialize();
+    return this._projectId;
   }
 
   /**
    * Check if REDCap API is properly configured
    */
   isConfigured(): boolean {
-    return !!(this.apiUrl && this.apiKey);
+    this.initialize();
+    return !!(this._apiUrl && this._apiKey);
   }
 
   /**
@@ -64,7 +104,7 @@ export class RedcapService {
 
     try {
       const formData = new FormData();
-      formData.append("token", this.apiKey);
+      formData.append("token", this.getApiKey());
       formData.append("content", content);
       formData.append("format", "json");
       formData.append("returnFormat", "json");
@@ -82,9 +122,11 @@ export class RedcapService {
         }
       });
 
-      const response = await fetch(this.apiUrl, {
+      const response = await fetch(this.getApiUrl(), {
         method: "POST",
         body: formData,
+        // Increase timeout for REDCap API calls (30 seconds)
+        signal: AbortSignal.timeout(30000),
       });
 
       if (!response.ok) {
@@ -283,20 +325,63 @@ export class RedcapService {
       // Export records to check completion status
       const response = await this.exportRecords([recordId], undefined, [instrument], event ? [event] : undefined);
 
-      if (!response.success || !response.data || response.data.length === 0) {
+      if (!response.success) {
+        console.error(`[REDCap] Failed to export records for ${recordId}:`, response.error);
+        return { completed: false };
+      }
+
+      if (!response.data || response.data.length === 0) {
+        console.log(`[REDCap] No data returned for record ${recordId}`);
         return { completed: false };
       }
 
       const record = response.data[0];
       const completionField = `${instrument}_complete`;
 
-      // Check if completion field exists and is marked as complete
-      const isComplete = record[completionField] === "2"; // 2 = Complete in REDCap
+      // Log for debugging
+      console.log(`[REDCap] Checking completion for record ${recordId}, instrument: ${instrument}`);
+      console.log(`[REDCap] Completion field: ${completionField}, value: ${record[completionField]}`);
+      console.log(`[REDCap] Record keys:`, Object.keys(record).slice(0, 20)); // First 20 keys
+      const completionFields = Object.keys(record).filter(k => k.toLowerCase().includes('complete'));
+      console.log(`[REDCap] Available completion fields:`, completionFields);
 
-      return {
+      // Check if completion field exists and is marked as complete
+      // REDCap uses "2" for Complete, "1" for Incomplete, "0" for Not Started
+      const completionValue = record[completionField];
+      let isComplete = completionValue === "2" || completionValue === 2 || completionValue === "Complete";
+
+      // If the standard field doesn't exist or isn't complete, check alternative formats
+      if (!isComplete && completionFields.length > 0) {
+        // Try other completion field formats
+        for (const field of completionFields) {
+          const value = record[field];
+          if (value === "2" || value === 2 || value === "Complete") {
+            console.log(`[REDCap] Found completion in alternative field: ${field}`);
+            isComplete = true;
+            break;
+          }
+        }
+      }
+
+      // Also check for timestamp field which indicates completion
+      if (!isComplete) {
+        const timestampField = `${instrument}_timestamp`;
+        if (record[timestampField]) {
+          console.log(`[REDCap] Found timestamp field ${timestampField}, considering as completed`);
+          isComplete = true;
+        }
+      }
+
+      // If still not complete, check if record has any data (might indicate partial completion)
+      // But we'll be conservative and only mark as complete if we have explicit indicators
+      
+      const result = {
         completed: isComplete,
-        completionTime: isComplete ? record[`${instrument}_timestamp`] : undefined,
+        completionTime: isComplete ? (record[`${instrument}_timestamp`] || new Date().toISOString()) : undefined,
       };
+
+      console.log(`[REDCap] Final completion status for ${recordId}:`, result);
+      return result;
     } catch (error: any) {
       console.error("Error checking survey completion:", error);
       return { completed: false };
