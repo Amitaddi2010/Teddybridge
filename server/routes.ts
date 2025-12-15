@@ -4125,11 +4125,26 @@ export async function registerRoutes(
       
       res.json({ transcript });
     } catch (error: any) {
-      console.error("Error in speech-to-text:", error);
-      res.status(500).json({ 
-        message: "Failed to transcribe speech",
+      // Check if it's a connection timeout or network error
+      const isTimeoutError = error.code === 'UND_ERR_CONNECT_TIMEOUT' || 
+                            error.message?.includes('timeout') ||
+                            error.message?.includes('Connect Timeout') ||
+                            error.message?.includes('fetch failed');
+      
+      // Only log unexpected errors (timeouts are network issues, expected to fallback)
+      if (!isTimeoutError) {
+        console.error("Error in speech-to-text:", error);
+      } else {
+        console.warn("AssemblyAI connection timeout - returning fallback response");
+      }
+      
+      // Return 503 (Service Unavailable) for network/timeout errors, 500 for other errors
+      return res.status(isTimeoutError ? 503 : 500).json({ 
+        message: isTimeoutError 
+          ? "Speech-to-text service temporarily unavailable. Please use browser STT or try again."
+          : "Failed to transcribe speech",
         error: error.message,
-        fallback: true
+        fallback: true // Always indicate fallback is available
       });
     }
   });
@@ -4162,12 +4177,18 @@ export async function registerRoutes(
         format: 'wav'
       });
     } catch (error: any) {
-      console.error("Error in text-to-speech:", error);
-      
       // Check if it's a terms acceptance error
-      const isTermsError = error.message?.includes('terms acceptance') || error.message?.includes('model_terms_required');
+      const isTermsError = error.code === 'MODEL_TERMS_REQUIRED' ||
+                          error.message?.includes('terms acceptance') || 
+                          error.message?.includes('model_terms_required');
       
-      res.status(500).json({ 
+      // Only log unexpected errors (terms acceptance is expected and handled gracefully)
+      if (!isTermsError) {
+        console.error("Error in text-to-speech:", error);
+      }
+      
+      // Return 400 for terms acceptance (user action needed), 500 for other errors
+      return res.status(isTermsError ? 400 : 500).json({ 
         message: isTermsError 
           ? "Groq TTS model requires terms acceptance. Please accept the terms at https://console.groq.com/playground?model=playai-tts"
           : "Failed to generate speech",
@@ -4305,11 +4326,41 @@ export async function registerRoutes(
         const surveyCount = surveys.length;
         const doctorCount = linkedDoctors.length;
 
+        // Fetch doctor details for linked doctors
+        const linkedDoctorsWithDetails = [];
+        for (const record of linkedDoctors.slice(0, 20)) { // Limit to first 20 for performance
+          try {
+            const doctor = await storage.getUserWithProfile(record.doctorId);
+            if (doctor && doctor.doctorProfile) {
+              linkedDoctorsWithDetails.push({
+                id: doctor.id,
+                name: doctor.name || '',
+                email: doctor.email || '',
+                specialty: doctor.doctorProfile.specialty || 'General',
+                phoneNumber: doctor.doctorProfile.phoneNumber || 'Not available',
+              });
+            }
+          } catch (error) {
+            // Skip if doctor not found
+          }
+        }
+
         context += `PATIENT CONTEXT:\n`;
         context += `- Confirmed peer connections: ${confirmedConnections}\n`;
         context += `- Pending connection requests: ${pendingRequests}\n`;
         context += `- Total surveys received: ${surveyCount}\n`;
         context += `- Linked doctors: ${doctorCount}\n\n`;
+
+        if (doctorCount > 0) {
+          context += `You have ${doctorCount} linked doctor${doctorCount > 1 ? 's' : ''}:\n`;
+          for (const doctor of linkedDoctorsWithDetails.slice(0, 10)) { // Limit to first 10 for context size
+            context += `  - Dr. ${doctor.name} (Specialty: ${doctor.specialty}, Email: ${doctor.email})\n`;
+          }
+          if (linkedDoctorsWithDetails.length > 10) {
+            context += `  ... and ${linkedDoctorsWithDetails.length - 10} more\n`;
+          }
+          context += `\n`;
+        }
 
         if (confirmedConnections > 0) {
           context += `You have ${confirmedConnections} confirmed peer connection${confirmedConnections > 1 ? 's' : ''}.\n`;

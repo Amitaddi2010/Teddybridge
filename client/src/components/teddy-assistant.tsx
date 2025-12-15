@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -88,11 +88,19 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
   const audioChunksRef = useRef<Blob[]>([]);
   const inputStateRef = useRef({ input: "", transcript: "" });
   const manuallyStoppedRef = useRef(false); // Track if user manually stopped listening
+  const speechModeRef = useRef(isSpeechMode); // Track speech mode state
+  const isOpenRef = useRef(isOpen); // Track open state
+  const isListeningRef = useRef(isListening); // Track listening state
+  const isSpeakingRef = useRef(isSpeaking); // Track speaking state
   
-  // Keep ref in sync with state
+  // Keep refs in sync with state
   useEffect(() => {
     inputStateRef.current = { input, transcript };
-  }, [input, transcript]);
+    speechModeRef.current = isSpeechMode;
+    isOpenRef.current = isOpen;
+    isListeningRef.current = isListening;
+    isSpeakingRef.current = isSpeaking;
+  }, [input, transcript, isSpeechMode, isOpen, isListening, isSpeaking]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -269,8 +277,43 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
     }
   }, [isSpeechMode, isOpen]);
 
+  /**
+   * Professional listening restart handler
+   * Ensures listening restarts after TTS completes, with proper state management
+   * Uses refs exclusively to avoid stale closure issues
+   */
+  const restartListeningAfterTTS = useCallback(() => {
+    // Use a delay to ensure audio has fully stopped and React state has updated
+    setTimeout(() => {
+      // Check all conditions using refs exclusively (always current, no stale closures)
+      const shouldRestart = 
+        speechModeRef.current &&        // Speech mode is active
+        isOpenRef.current &&              // Chat is open
+        !manuallyStoppedRef.current &&    // User hasn't manually stopped
+        !isListeningRef.current &&        // Not already listening (using ref)
+        !isSpeakingRef.current;           // Not currently speaking (using ref)
+      
+      if (shouldRestart) {
+        console.log('[Teddy] ✅ Restarting listening after TTS');
+        startListening();
+      } else {
+        console.log('[Teddy] ⏸️ Skipping restart:', {
+          speechMode: speechModeRef.current,
+          isOpen: isOpenRef.current,
+          manuallyStopped: manuallyStoppedRef.current,
+          isListening: isListeningRef.current,
+          isSpeaking: isSpeakingRef.current
+        });
+      }
+    }, 800); // Delay to ensure audio has fully stopped
+  }, []); // No dependencies - uses refs exclusively
+
   const startListening = async () => {
-    if (isListening) return;
+    // Don't start listening if already listening or if Teddy is speaking
+    // This prevents the microphone from picking up TTS audio and creating a feedback loop
+    if (isListening || isSpeaking) {
+      return;
+    }
     
     // Try cloud STT if available, otherwise use browser API
     if (useCloudSTT) {
@@ -294,8 +337,11 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
           // Stop all tracks
           stream.getTracks().forEach(track => track.stop());
           
-          if (manuallyStoppedRef.current) {
+          // Don't process audio if manually stopped or if Teddy is speaking
+          // This prevents processing audio that might contain TTS feedback
+          if (manuallyStoppedRef.current || isSpeaking) {
             audioChunksRef.current = [];
+            setIsListening(false);
             return;
           }
           
@@ -402,7 +448,8 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
   };
 
   const startListeningBrowser = () => {
-    if (recognitionRef.current && !isListening) {
+    // Don't start if already listening or if Teddy is speaking
+    if (recognitionRef.current && !isListening && !isSpeaking) {
       try {
         manuallyStoppedRef.current = false; // Reset manual stop flag when starting
         recognitionRef.current.start();
@@ -486,6 +533,12 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
       return;
     }
 
+    // CRITICAL: Stop listening when Teddy starts speaking to prevent feedback loop
+    // The microphone will pick up the TTS audio and cause Teddy to respond to itself
+    if (isListening) {
+      stopListening();
+    }
+
     // Try cloud TTS first, fallback to browser TTS
     if (useCloudTTS) {
       try {
@@ -493,7 +546,7 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
         
         const response = await apiRequest("POST", "/api/teddy/tts", {
           text: sanitizedText,
-          voice: 'Fritz-PlayAI', // Natural, friendly voice from Groq
+          voice: 'Basil-PlayAI', // Natural, friendly voice from Groq
         });
         
         const data = await response.json();
@@ -507,29 +560,34 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
           audio.onended = () => {
             setIsSpeaking(false);
             URL.revokeObjectURL(audioUrl);
-            // Auto-restart listening if in speech mode (only if not manually stopped)
-            if (isSpeechMode && isOpen && !manuallyStoppedRef.current) {
-              setTimeout(() => {
-                if (!manuallyStoppedRef.current) {
-                  startListening();
-                }
-              }, 500);
-            }
+            // Restart listening after cloud TTS completes
+            restartListeningAfterTTS();
           };
           
           audio.onerror = () => {
             setIsSpeaking(false);
             URL.revokeObjectURL(audioUrl);
-            // Fallback to browser TTS
+            // Fallback to browser TTS - it will handle restarting listening
             speakTextBrowser(sanitizedText);
+          };
+          
+          audio.onpause = () => {
+            // Ensure speaking state is cleared if audio is paused
+            setIsSpeaking(false);
           };
           
           await audio.play();
           return;
+        } else if (data.fallback) {
+          // Cloud TTS not available, fallback to browser TTS
+          setIsSpeaking(false); // Reset speaking state before fallback
+          speakTextBrowser(sanitizedText);
+          return;
         }
       } catch (error) {
         console.error('Cloud TTS error, falling back to browser:', error);
-        // Fallback to browser TTS
+        setIsSpeaking(false); // Reset speaking state on error
+        // Fallback to browser TTS - it will handle restarting listening
       }
     }
     
@@ -553,14 +611,8 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
 
       utterance.onend = () => {
         setIsSpeaking(false);
-        // Auto-restart listening if in speech mode (only if not manually stopped)
-        if (isSpeechMode && isOpen && !manuallyStoppedRef.current) {
-          setTimeout(() => {
-            if (!manuallyStoppedRef.current) {
-              startListening();
-            }
-          }, 500);
-        }
+        // Restart listening after browser TTS completes
+        restartListeningAfterTTS();
       };
 
       utterance.onerror = () => {

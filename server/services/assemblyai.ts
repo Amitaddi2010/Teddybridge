@@ -38,10 +38,13 @@ export class AssemblyAIService {
     for (let attempt = 0; attempt < retries; attempt++) {
       try {
         // Create AbortController for timeout
+        // Use 30 seconds for connection timeout (fetch default is 10s, we'll use longer)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 180000); // 3 minutes timeout
+        const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 seconds timeout for upload
 
         // First, upload the file
+        // Note: Node.js fetch has a default 10s connection timeout
+        // We'll rely on the AbortController for our custom timeout
         const uploadResponse = await fetch(`${this.baseUrl}/upload`, {
           method: 'POST',
           headers: {
@@ -50,6 +53,8 @@ export class AssemblyAIService {
           },
           body: audioBuffer,
           signal: controller.signal,
+          // Note: Node.js fetch doesn't support connectTimeout option directly
+          // The timeout is handled by AbortController above
         });
 
         clearTimeout(timeoutId);
@@ -64,11 +69,18 @@ export class AssemblyAIService {
         return uploadData.upload_url;
       } catch (error: any) {
         const isLastAttempt = attempt === retries - 1;
+        const isTimeoutError = error.name === 'AbortError' || 
+                              error.code === 'UND_ERR_CONNECT_TIMEOUT' ||
+                              error.message?.includes('timeout') ||
+                              error.message?.includes('Connect Timeout');
         
-        if (error.name === 'AbortError' || error.code === 'UND_ERR_CONNECT_TIMEOUT') {
+        if (isTimeoutError) {
           if (isLastAttempt) {
-            throw new Error('Assembly AI upload timeout after multiple attempts. The file may be too large or network connection is unstable. Please try again later.');
+            // Don't log as error - this is a network issue, not a code issue
+            // The frontend will fallback to browser STT
+            throw new Error('Assembly AI connection timeout. Please use browser STT or check your network connection.');
           }
+          // Only log retry attempts, not as errors
           console.log(`Upload attempt ${attempt + 1} timed out, retrying...`);
           // Wait before retrying (exponential backoff)
           await new Promise(resolve => setTimeout(resolve, (attempt + 1) * 2000));

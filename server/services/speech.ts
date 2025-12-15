@@ -55,7 +55,17 @@ export class SpeechService {
       
       return cleanText || transcriptText;
     } catch (error: any) {
-      console.error('Error in speech-to-text:', error);
+      // Only log unexpected errors (connection timeouts are network issues)
+      const isTimeoutError = error.code === 'UND_ERR_CONNECT_TIMEOUT' || 
+                            error.message?.includes('timeout') ||
+                            error.message?.includes('Connect Timeout');
+      
+      if (!isTimeoutError) {
+        console.error('Error in speech-to-text:', error);
+      } else {
+        // Log timeout as warning, not error (network issue, not code issue)
+        console.warn('AssemblyAI connection timeout - will fallback to browser STT');
+      }
       throw error;
     }
   }
@@ -65,8 +75,8 @@ export class SpeechService {
    * Returns audio data as ArrayBuffer
    * Available voices: Arista-PlayAI, Atlas-PlayAI, Basil-PlayAI, Briggs-PlayAI, Calum-PlayAI,
    * Celeste-PlayAI, Cheyenne-PlayAI, Chip-PlayAI, Cillian-PlayAI, Deedee-PlayAI, Fritz-PlayAI,
-   * Gail-PlayAI, Indigo-PlayAI, Mamaw-PlayAI, Mason-PlayAI, Mikail-PlayAI, Mitch-PlayAI,
-   * Quinn-PlayAI, Thunder-PlayAI
+   * Gail-PlayAI, Indigo-PlayAI, Judy-PlayAI, Mamaw-PlayAI, Mason-PlayAI, Mikail-PlayAI, 
+   * Mitch-PlayAI, Quinn-PlayAI, Thunder-PlayAI
    */
   async textToSpeech(text: string, voice: string = 'Fritz-PlayAI'): Promise<ArrayBuffer> {
     if (!this.isTTSConfigured()) {
@@ -91,25 +101,34 @@ export class SpeechService {
       if (!response.ok) {
         const errorText = await response.text();
         let errorMessage = `Groq TTS error: ${response.status} - ${errorText}`;
+        let errorCode: string | undefined;
         
         // Handle specific error cases
         try {
           const errorJson = JSON.parse(errorText);
           if (errorJson.error?.code === 'model_terms_required') {
             errorMessage = `Groq TTS model requires terms acceptance. Please accept the terms at https://console.groq.com/playground?model=playai-tts and try again.`;
+            errorCode = 'MODEL_TERMS_REQUIRED';
           } else if (errorJson.error?.message) {
             errorMessage = `Groq TTS error: ${errorJson.error.message}`;
+            errorCode = errorJson.error?.code;
           }
         } catch {
           // If error is not JSON, use the original error text
         }
         
-        throw new Error(errorMessage);
+        const error: any = new Error(errorMessage);
+        error.code = errorCode;
+        error.status = response.status;
+        throw error;
       }
 
       return await response.arrayBuffer();
     } catch (error: any) {
-      console.error('Error in text-to-speech:', error);
+      // Only log unexpected errors (not terms acceptance which is expected)
+      if (error.code !== 'MODEL_TERMS_REQUIRED') {
+        console.error('Error in text-to-speech:', error);
+      }
       throw error;
     }
   }
