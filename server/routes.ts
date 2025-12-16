@@ -4354,12 +4354,38 @@ export async function registerRoutes(
         if (doctorCount > 0) {
           context += `You have ${doctorCount} linked doctor${doctorCount > 1 ? 's' : ''}:\n`;
           for (const doctor of linkedDoctorsWithDetails.slice(0, 10)) { // Limit to first 10 for context size
-            context += `  - Dr. ${doctor.name} (Specialty: ${doctor.specialty}, Email: ${doctor.email})\n`;
+            const phoneDisplay = doctor.phoneNumber && doctor.phoneNumber !== 'Not available' ? doctor.phoneNumber : 'N/A';
+            context += `  - Dr. ${doctor.name} (Specialty: ${doctor.specialty}, Phone: ${phoneDisplay}, Email: ${doctor.email})\n`;
           }
           if (linkedDoctorsWithDetails.length > 10) {
             context += `  ... and ${linkedDoctorsWithDetails.length - 10} more\n`;
           }
           context += `\n`;
+          
+          // Add call handling instructions for patients
+          context += `=== CRITICAL: PATIENT CALLING RULES ===\n`;
+          context += `🚫 PATIENTS CANNOT CALL DOCTORS - This is STRICTLY PROHIBITED.\n`;
+          context += `✅ PATIENTS CAN ONLY CALL OTHER PATIENTS (peer-to-peer connections)\n`;
+          context += `\nCALLING RULES FOR PATIENTS:\n`;
+          context += `1. ✅ ALLOWED: Patient-to-Patient calls (only with confirmed peer connections)\n`;
+          context += `2. 🚫 NOT ALLOWED: Patient-to-Doctor calls (completely disabled)\n`;
+          context += `3. 🚫 NOT ALLOWED: Any attempt to call a doctor will be rejected\n`;
+          context += `\nWhen a patient asks to call a doctor:\n`;
+          context += `- IMMEDIATELY and CLEARLY state: "I'm sorry, but patients cannot call doctors through this platform. The calling feature is only available for connecting with other patients (peers)."\n`;
+          context += `- Explain alternative contact methods:\n`;
+          context += `  * Email (if doctor's email is available)\n`;
+          context += `  * Dashboard messaging/communication features\n`;
+          context += `  * Regular healthcare communication channels\n`;
+          context += `- DO NOT suggest or offer any workaround to call doctors\n`;
+          context += `- DO NOT say "I can help you initiate a call" when referring to doctors\n`;
+          context += `- You can show doctor information (name, specialty, email) but emphasize they cannot be called\n`;
+          context += `\nWhen a patient asks to call another patient:\n`;
+          context += `- This IS allowed if they have a confirmed peer connection\n`;
+          context += `- You can help them initiate patient-to-patient calls\n`;
+          context += `- Check if they have confirmed connections first\n`;
+          context += `\nExample responses:\n`;
+          context += `- For doctor call request: "I understand you'd like to contact Dr. [Name]. However, patients cannot make voice calls to doctors through this platform. The calling feature is only for connecting with other patients. You can reach Dr. [Name] via email at [email] or through the communication features in your Doctors dashboard."\n`;
+          context += `- For patient call request: "I can help you call [Patient Name]. Let me check if you have a confirmed connection with them..."\n\n`;
         }
 
         if (confirmedConnections > 0) {
@@ -4371,11 +4397,13 @@ export async function registerRoutes(
 
         context += `\nYou can help with questions about:\n`;
         context += `- Peer connections and matching\n`;
+        context += `- Patient-to-Patient calls (ONLY - not doctor calls)\n`;
         context += `- Connection requests (pending, accepted, declined)\n`;
         context += `- Surveys from your doctors\n`;
         context += `- Scheduled meetings with peers\n`;
         context += `- Your profile and preferences\n`;
         context += `- Match percentages with other patients (if enabled)\n`;
+        context += `\nREMEMBER: As a patient, you can ONLY call other patients, NEVER doctors.\n`;
       }
 
       // Import groqService dynamically
@@ -4664,8 +4692,23 @@ export async function registerRoutes(
       // Check the question itself for keywords, not the context (context always has patient info)
       const hasPatientKeywords = /patient|link|view|details|information|add|manage|survey|prom|qr|code/i.test(question);
       
+      // BLOCK PATIENT-TO-DOCTOR CALLS - This is strictly prohibited
+      if (userRole === 'PATIENT' && isCallRequest) {
+        // Check if they're trying to call a doctor (not a patient)
+        const doctorKeywords = /doctor|dr\.|physician|specialist/i.test(question);
+        if (doctorKeywords) {
+          console.log(`[Teddy] 🚫 BLOCKED: Patient attempted to call a doctor`);
+          return res.json({
+            answer: "I'm sorry, but patients cannot call doctors through this platform. The calling feature is only available for connecting with other patients (peers). You can contact your doctor via email or through the communication features in your Doctors dashboard."
+          });
+        }
+        // If they're trying to call a patient, that's allowed - let it proceed
+        // The context already has instructions about patient-to-patient calls
+      }
+      
       // Check for call confirmation (yes after finding a doctor)
       // IMPORTANT: This check must happen BEFORE any AI processing
+      // ONLY for doctors - patients cannot confirm doctor calls
       if (userRole === 'DOCTOR' && isConfirmation && !isCallRequest && !hasPatientKeywords) {
         // Check if we have a pending call request in the session
         const lastFoundDoctor = (req.session as any).lastFoundDoctorForCall;

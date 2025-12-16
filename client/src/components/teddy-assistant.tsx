@@ -747,12 +747,12 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
       {/* Floating Button */}
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 md:bottom-8 md:right-8 z-[9999] h-14 w-14 sm:h-16 sm:w-16 md:h-18 md:w-18 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 ease-out flex items-center justify-center group hover:scale-110 active:scale-95 touch-manipulation"
+        className="fixed bottom-4 right-4 sm:bottom-6 sm:right-6 md:bottom-8 md:right-8 z-[9999] h-14 w-14 sm:h-16 sm:w-16 md:h-16 md:w-16 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 hover:from-blue-600 hover:to-blue-700 text-white shadow-2xl hover:shadow-blue-500/50 transition-all duration-300 ease-out flex items-center justify-center group hover:scale-110 active:scale-95 touch-manipulation"
         aria-label="Open Teddy AI Assistant"
         style={{ position: 'fixed' }}
       >
         <div className="relative">
-          <Stethoscope className="h-6 w-6 sm:h-7 sm:w-7 md:h-8 md:w-8 transition-transform group-hover:scale-110" />
+          <Stethoscope className="h-6 w-6 sm:h-7 sm:w-7 md:h-7 md:w-7 transition-transform group-hover:scale-110" />
           {!isOpen && (
             <span className="absolute -top-1 -right-1 h-3 w-3 sm:h-3.5 sm:w-3.5 md:h-4 md:w-4 bg-green-500 rounded-full border-2 border-white animate-pulse" />
           )}
@@ -761,15 +761,15 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
 
       {/* Chat Popup */}
       {isOpen && (
-        <div className="fixed inset-0 sm:inset-auto sm:bottom-20 sm:right-4 md:bottom-24 md:right-6 lg:bottom-28 lg:right-8 z-[9999] w-full sm:w-[90vw] sm:max-w-md md:w-96 lg:w-[420px] h-full sm:h-[600px] sm:max-h-[85vh] md:max-h-[80vh] flex flex-col shadow-2xl sm:rounded-2xl overflow-hidden border-0 sm:border border-gray-200/50 dark:border-gray-800/50 bg-white dark:bg-gray-900 backdrop-blur-sm" style={{ position: 'fixed' }}>
+        <div className="fixed inset-0 sm:inset-auto sm:bottom-20 sm:right-4 md:bottom-24 md:right-6 lg:bottom-28 lg:right-8 z-[9999] w-full sm:w-[420px] sm:max-w-[420px] md:w-96 lg:w-[420px] h-full sm:h-[600px] sm:max-h-[85vh] md:max-h-[80vh] flex flex-col shadow-2xl sm:rounded-2xl overflow-hidden border-0 sm:border border-gray-200/50 dark:border-gray-800/50 bg-white dark:bg-gray-900 backdrop-blur-sm" style={{ position: 'fixed', paddingLeft: 'max(0px, env(safe-area-inset-left))', paddingRight: 'max(0px, env(safe-area-inset-right))' }}>
           {/* Header */}
-          <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-3 sm:p-4 md:p-4 flex items-center justify-between flex-shrink-0">
+          <div className="bg-gradient-to-r from-blue-500 to-blue-600 text-white p-3 sm:p-4 md:p-4 flex items-center justify-between flex-shrink-0 safe-area-top">
             <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
-              <div className="h-9 w-9 sm:h-10 sm:w-10 md:h-11 md:w-11 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
+              <div className="h-9 w-9 sm:h-10 sm:w-10 md:h-10 md:w-10 rounded-full bg-white/20 flex items-center justify-center flex-shrink-0">
                 <Stethoscope className="h-5 w-5 sm:h-6 sm:w-6 md:h-6 md:w-6" />
               </div>
-              <div className="min-w-0">
-                <h3 className="font-semibold text-base sm:text-lg md:text-xl truncate">Teddy AI</h3>
+              <div className="min-w-0 flex-1">
+                <h3 className="font-semibold text-base sm:text-lg md:text-lg truncate">Teddy AI</h3>
                 <p className="text-xs sm:text-sm text-blue-100 truncate">
                   {isSpeechMode ? "Voice Mode" : "Text Mode"}
                 </p>
@@ -782,7 +782,7 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
                 size="sm"
                 onClick={toggleSpeechMode}
                 disabled={!isSpeechSupported}
-                className={`h-9 w-9 sm:h-9 sm:w-9 md:w-auto md:px-3 hover:bg-white/20 text-white transition-all touch-manipulation ${
+                className={`h-9 w-9 sm:h-10 sm:w-10 md:h-10 md:w-10 hover:bg-white/20 text-white transition-all touch-manipulation flex-shrink-0 ${
                   isSpeechMode ? 'bg-white/30' : ''
                 } ${!isSpeechSupported ? 'opacity-50 cursor-not-allowed' : ''}`}
                 title={
@@ -807,7 +807,7 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
                   stopListening();
                   window.speechSynthesis.cancel();
                 }}
-                className="h-9 w-9 sm:h-9 sm:w-9 p-0 hover:bg-white/20 text-white touch-manipulation"
+                className="h-9 w-9 sm:h-10 sm:w-10 md:h-10 md:w-10 p-0 hover:bg-white/20 text-white touch-manipulation flex-shrink-0"
                 aria-label="Close chat"
               >
                 <X className="h-4 w-4 sm:h-5 sm:w-5" />
@@ -816,7 +816,7 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
           </div>
 
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-5 min-h-0 overscroll-contain">
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-5 min-h-0 overscroll-contain scroll-smooth">
             <div className="space-y-3 sm:space-y-4">
               {messages.map((message, index) => (
                 <div
@@ -836,7 +836,7 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
                         <span className="text-xs sm:text-sm font-semibold">Teddy</span>
                       </div>
                     )}
-                    <p className="text-sm sm:text-base whitespace-pre-wrap leading-relaxed break-words">
+                    <p className="text-sm sm:text-base md:text-[15px] whitespace-pre-wrap leading-relaxed break-words">
                       {message.content}
                     </p>
                   </div>
@@ -859,7 +859,7 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
                 <>
                   {isListening && (
                     <div className="flex justify-start">
-                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 border border-blue-200 dark:border-blue-800">
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 border border-blue-200 dark:border-blue-800 max-w-full">
                         <div className="flex items-center gap-2 sm:gap-3">
                           {/* Animated Waveform */}
                           <div className="flex items-end gap-0.5 sm:gap-1 h-5 sm:h-6 flex-shrink-0">
@@ -878,7 +878,7 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
                               Listening...
                             </p>
                             {transcript && (
-                              <p className="text-xs sm:text-sm text-blue-600 dark:text-blue-400 mt-1 italic break-words">
+                              <p className="text-xs sm:text-sm text-blue-600 dark:text-blue-400 mt-1 italic break-words overflow-wrap-anywhere">
                                 {transcript}
                               </p>
                             )}
@@ -889,14 +889,14 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
                   )}
                   {isSpeaking && (
                     <div className="flex justify-start">
-                      <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 border border-green-200 dark:border-green-800">
+                      <div className="bg-green-50 dark:bg-green-900/20 rounded-2xl px-3 py-2.5 sm:px-4 sm:py-3 border border-green-200 dark:border-green-800 max-w-full">
                         <div className="flex items-center gap-2 sm:gap-3">
                           {/* Animated Speaking Indicator */}
                           <div className="relative flex-shrink-0">
                             <Volume2 className="h-4 w-4 sm:h-5 sm:w-5 md:h-5 md:w-5 text-green-600 dark:text-green-400 animate-pulse" />
                             <div className="absolute inset-0 rounded-full bg-green-400/30 animate-ping" />
                           </div>
-                          <p className="text-xs sm:text-sm md:text-base font-medium text-green-700 dark:text-green-300">
+                          <p className="text-xs sm:text-sm md:text-base font-medium text-green-700 dark:text-green-300 break-words">
                             Teddy is speaking...
                           </p>
                         </div>
@@ -910,7 +910,7 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
           </div>
 
           {/* Input */}
-          <div className="p-3 sm:p-4 md:p-5 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex-shrink-0">
+          <div className="p-3 sm:p-4 md:p-5 border-t border-gray-200 dark:border-gray-800 bg-gray-50 dark:bg-gray-950 flex-shrink-0 safe-area-bottom">
             {isSpeechMode ? (
               <div className="space-y-2.5 sm:space-y-3">
                 {/* Speech Input Display */}
@@ -930,9 +930,9 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
                 </div>
                 {/* Auto Mode Indicator */}
                 <div className="flex items-center justify-center px-2">
-                  <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground">
+                  <div className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-muted-foreground flex-wrap justify-center">
                     <div className="h-1.5 w-1.5 sm:h-2 sm:w-2 bg-green-500 rounded-full animate-pulse flex-shrink-0" />
-                    <span className="text-center">Auto mode - Speak and I'll respond automatically</span>
+                    <span className="text-center break-words">Auto mode - Speak and I'll respond automatically</span>
                   </div>
                 </div>
                 {/* Optional Stop Button (only show when listening) */}
@@ -942,10 +942,10 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
                       onClick={stopListening}
                       size="sm"
                       variant="outline"
-                      className="rounded-full border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 touch-manipulation text-xs sm:text-sm px-3 sm:px-4"
+                      className="rounded-full border-red-300 hover:bg-red-50 dark:hover:bg-red-900/20 touch-manipulation text-xs sm:text-sm px-4 sm:px-5 py-2"
                     >
-                      <MicOff className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-600 mr-1.5 sm:mr-2" />
-                      Stop Listening
+                      <MicOff className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-red-600 mr-1.5 sm:mr-2 flex-shrink-0" />
+                      <span className="whitespace-nowrap">Stop Listening</span>
                     </Button>
                   </div>
                 )}
@@ -959,19 +959,19 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
                   onKeyPress={handleKeyPress}
                   placeholder="Ask Teddy anything..."
                   disabled={askTeddyMutation.isPending}
-                  className="flex-1 text-sm sm:text-base h-10 sm:h-11"
+                  className="flex-1 text-sm sm:text-base md:text-[15px] h-11 sm:h-12 min-h-[44px]"
                 />
                 <Button
                   onClick={handleSend}
                   disabled={!input.trim() || askTeddyMutation.isPending}
                   size="sm"
-                  className="bg-blue-600 hover:bg-blue-700 h-10 sm:h-11 w-10 sm:w-11 p-0 touch-manipulation"
+                  className="bg-blue-600 hover:bg-blue-700 h-11 sm:h-12 w-11 sm:w-12 min-h-[44px] min-w-[44px] p-0 touch-manipulation flex-shrink-0"
                   aria-label="Send message"
                 >
                   {askTeddyMutation.isPending ? (
-                    <Loader2 className="h-4 w-4 sm:h-5 sm:w-5 animate-spin" />
+                    <Loader2 className="h-5 w-5 animate-spin" />
                   ) : (
-                    <Send className="h-4 w-4 sm:h-5 sm:w-5" />
+                    <Send className="h-5 w-5" />
                   )}
                 </Button>
               </div>
