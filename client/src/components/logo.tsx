@@ -5,6 +5,7 @@ interface LogoProps {
   size?: "sm" | "md" | "lg";
   showText?: boolean;
   className?: string;
+  bridgeColor?: string; // Custom color for "Bridge" text
 }
 
 const sizeStyles = {
@@ -25,7 +26,7 @@ const textSizeStyles = {
   lg: "text-3xl font-bold",
 };
 
-export function Logo({ size = "md", showText = true, className }: LogoProps) {
+export function Logo({ size = "md", showText = true, className, bridgeColor }: LogoProps) {
   return (
     <div className={cn("flex items-center gap-2.5", className)} data-testid="logo-teddybridge">
       <div className={cn(
@@ -44,7 +45,7 @@ export function Logo({ size = "md", showText = true, className }: LogoProps) {
           textSizeStyles[size]
         )}>
           <span className="text-primary">Teddy</span>
-          <span className="text-foreground">Bridge</span>
+          <span className={bridgeColor || "text-foreground"}>Bridge</span>
         </span>
       )}
     </div>

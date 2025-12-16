@@ -13,44 +13,90 @@ import {
   Activity,
   ArrowRight,
   CheckCircle,
-  LogIn
+  LogIn,
+  Menu,
+  X
 } from "lucide-react";
+import { useState } from "react";
 
 export default function Landing() {
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+
   return (
     <div className="min-h-screen bg-[#1a1a1a] text-white">
       {/* Header - Matching salespatriot.com design - Transparent */}
       <header className="absolute top-0 left-0 right-0 z-50 w-full border-b border-transparent bg-transparent" style={{ backgroundColor: 'transparent' }}>
-        <div className="max-w-7xl mx-auto px-6">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="flex h-16 items-center justify-between gap-4">
             <Link href="/">
-              <Logo size="md" />
+              <Logo size="md" bridgeColor="text-white" />
             </Link>
             
-            <div className="flex items-center gap-3">
+            {/* Desktop Navigation */}
+            <nav className="hidden md:flex items-center gap-2 lg:gap-3">
               <Link href="/patient">
-                <Button variant="ghost" className="text-white hover:bg-white/10" data-testid="link-patient">
+                <Button variant="ghost" className="text-white hover:bg-white/10 text-sm lg:text-base" data-testid="link-patient">
                   Patient
                 </Button>
               </Link>
               <Link href="/doctor">
-                <Button variant="ghost" className="text-white hover:bg-white/10" data-testid="link-doctor">
+                <Button variant="ghost" className="text-white hover:bg-white/10 text-sm lg:text-base" data-testid="link-doctor">
                   Doctor
                 </Button>
               </Link>
               <Link href="/about">
-                <Button variant="ghost" className="text-white hover:bg-white/10" data-testid="link-about">
+                <Button variant="ghost" className="text-white hover:bg-white/10 text-sm lg:text-base" data-testid="link-about">
                   About Us
                 </Button>
               </Link>
               <Link href="/login">
-                <Button variant="ghost" className="text-white bg-white/20 hover:bg-white/30 flex items-center gap-2" data-testid="link-login">
+                <Button variant="ghost" className="text-white bg-white/20 hover:bg-white/30 flex items-center gap-2 text-sm lg:text-base" data-testid="link-login">
                   <LogIn className="h-4 w-4" />
-                  Log In
+                  <span className="hidden lg:inline">Log In</span>
+                  <span className="lg:hidden">Login</span>
                 </Button>
               </Link>
-            </div>
+            </nav>
+
+            {/* Mobile Menu Button */}
+            <Button
+              variant="ghost"
+              className="md:hidden text-white hover:bg-white/10 p-2"
+              onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
+              aria-label="Toggle menu"
+            >
+              {mobileMenuOpen ? <X className="h-6 w-6" /> : <Menu className="h-6 w-6" />}
+            </Button>
           </div>
+
+          {/* Mobile Navigation Menu */}
+          {mobileMenuOpen && (
+            <div className="md:hidden absolute top-16 left-0 right-0 bg-[#1a1a1a]/95 backdrop-blur-md border-b border-white/10">
+              <nav className="flex flex-col py-4 px-4 space-y-2">
+                <Link href="/patient" onClick={() => setMobileMenuOpen(false)}>
+                  <Button variant="ghost" className="w-full justify-start text-white hover:bg-white/10" data-testid="link-patient-mobile">
+                    Patient
+                  </Button>
+                </Link>
+                <Link href="/doctor" onClick={() => setMobileMenuOpen(false)}>
+                  <Button variant="ghost" className="w-full justify-start text-white hover:bg-white/10" data-testid="link-doctor-mobile">
+                    Doctor
+                  </Button>
+                </Link>
+                <Link href="/about" onClick={() => setMobileMenuOpen(false)}>
+                  <Button variant="ghost" className="w-full justify-start text-white hover:bg-white/10" data-testid="link-about-mobile">
+                    About Us
+                  </Button>
+                </Link>
+                <Link href="/login" onClick={() => setMobileMenuOpen(false)}>
+                  <Button variant="ghost" className="w-full justify-start text-white bg-white/20 hover:bg-white/30" data-testid="link-login-mobile">
+                    <LogIn className="h-4 w-4 mr-2" />
+                    Log In
+                  </Button>
+                </Link>
+              </nav>
+            </div>
+          )}
         </div>
       </header>
 
@@ -96,38 +142,38 @@ export default function Landing() {
         </div>
         
         {/* Content */}
-        <div className="mx-auto max-w-7xl px-6 relative z-[2] flex-1 flex items-center">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 relative z-[2] flex-1 flex items-center pt-20 sm:pt-0">
           <div className="text-center w-full">
-            <div className="mx-auto max-w-[980px] px-6 text-center">
+            <div className="mx-auto max-w-[980px] px-4 sm:px-6 text-center">
               {/* Made in America Badge */}
-              <div className="bg-white/10 backdrop-blur-sm border border-white/20 group mx-auto flex w-fit items-center gap-2 rounded-full p-1 pl-4 pr-4 text-white mb-6">
-                <span className="text-sm font-medium">Made in America</span>
-                <span className="text-xl">🇺🇸</span>
+              <div className="bg-white/10 backdrop-blur-sm border border-white/20 group mx-auto flex w-fit items-center gap-2 rounded-full p-1 pl-3 pr-3 sm:pl-4 sm:pr-4 text-white mb-4 sm:mb-6">
+                <span className="text-xs sm:text-sm font-medium">Made in America</span>
+                <span className="text-lg sm:text-xl">🇺🇸</span>
               </div>
               
               {/* Tagline */}
-              <h1 className="text-white font-extrabold tracking-tight leading-[1.05] drop-shadow-[0_2px_6px_rgba(0,0,0,0.45)] text-[clamp(32px,6vw,68px)] max-[767px]:text-[clamp(30px,8vw,40px)] md:text-[clamp(40px,5.2vw,56px)] xl:text-[clamp(48px,6vw,68px)] xl:whitespace-nowrap">
+              <h1 className="text-white font-extrabold tracking-tight leading-[1.1] sm:leading-[1.05] drop-shadow-[0_2px_6px_rgba(0,0,0,0.45)] text-[clamp(28px,8vw,68px)] sm:text-[clamp(40px,5.2vw,56px)] xl:text-[clamp(48px,6vw,68px)] px-2">
                 Connect with Peers
               </h1>
               
               {/* Description */}
-              <p className="mt-4 md:mt-5 text-white/85 font-medium leading-relaxed text-[clamp(16px,1.6vw,20px)] max-w-2xl mx-auto mb-10">
+              <p className="mt-4 sm:mt-5 text-white/85 font-medium leading-relaxed text-[clamp(14px,2vw,20px)] max-w-2xl mx-auto mb-6 sm:mb-10 px-4">
                 TeddyBridge connects patients for <span className="font-semibold text-white underline decoration-white/30 underline-offset-[6px]">Peer-to-Peer Support</span> and enables doctors to monitor outcomes with PROMS — tracking.
               </p>
             
               {/* Two Glassmorphism Cards */}
-              <div className="flex justify-center">
-                <div className="flex flex-col sm:flex-row gap-4 sm:gap-5 justify-center">
+              <div className="flex justify-center px-4">
+                <div className="flex flex-col sm:flex-row gap-4 sm:gap-5 justify-center w-full sm:w-auto max-w-2xl sm:max-w-none">
               {/* Patient Card */}
-              <Link href="/signup/patient" className="w-full sm:w-auto">
-                <div className="group relative bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-6 sm:p-8 hover:bg-white/15 transition-all duration-300 cursor-pointer w-full sm:min-w-[320px]">
+              <Link href="/signup/patient" className="w-full sm:w-auto sm:flex-1">
+                <div className="group relative bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-5 sm:p-6 md:p-8 hover:bg-white/15 transition-all duration-300 cursor-pointer w-full sm:min-w-[280px] md:min-w-[320px]">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="h-12 w-12 rounded-lg bg-white/10 flex items-center justify-center border border-white/20">
-                        <Users className="h-6 w-6 text-white" />
+                    <div className="flex items-center gap-3 sm:gap-4">
+                      <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg bg-white/10 flex items-center justify-center border border-white/20 flex-shrink-0">
+                        <Users className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                       </div>
                       <div className="text-left">
-                        <h3 className="text-lg sm:text-xl font-semibold text-white mb-1">
+                        <h3 className="text-base sm:text-lg md:text-xl font-semibold text-white mb-1">
                           I&apos;m a Patient
                         </h3>
                         <p className="text-xs sm:text-sm text-white/80 font-normal">
@@ -135,21 +181,21 @@ export default function Landing() {
                         </p>
                       </div>
                     </div>
-                    <ArrowRight className="h-5 w-5 text-white/60 group-hover:text-white group-hover:translate-x-1 transition-all" />
+                    <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5 text-white/60 group-hover:text-white group-hover:translate-x-1 transition-all flex-shrink-0" />
                   </div>
                 </div>
               </Link>
 
               {/* Doctor Card */}
-              <Link href="/signup/doctor" className="w-full sm:w-auto">
-                <div className="group relative bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-6 sm:p-8 hover:bg-white/15 transition-all duration-300 cursor-pointer w-full sm:min-w-[320px]">
+              <Link href="/signup/doctor" className="w-full sm:w-auto sm:flex-1">
+                <div className="group relative bg-white/10 backdrop-blur-md border border-white/20 rounded-2xl p-5 sm:p-6 md:p-8 hover:bg-white/15 transition-all duration-300 cursor-pointer w-full sm:min-w-[280px] md:min-w-[320px]">
                   <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-4">
-                      <div className="h-12 w-12 rounded-lg bg-white/10 flex items-center justify-center border border-white/20">
-                        <Stethoscope className="h-6 w-6 text-white" />
+                    <div className="flex items-center gap-3 sm:gap-4">
+                      <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-lg bg-white/10 flex items-center justify-center border border-white/20 flex-shrink-0">
+                        <Stethoscope className="h-5 w-5 sm:h-6 sm:w-6 text-white" />
                       </div>
                       <div className="text-left">
-                        <h3 className="text-lg sm:text-xl font-semibold text-white mb-1">
+                        <h3 className="text-base sm:text-lg md:text-xl font-semibold text-white mb-1">
                           I&apos;m a Doctor
                         </h3>
                         <p className="text-xs sm:text-sm text-white/80 font-normal">
@@ -157,7 +203,7 @@ export default function Landing() {
                         </p>
                       </div>
                     </div>
-                    <ArrowRight className="h-5 w-5 text-white/60 group-hover:text-white group-hover:translate-x-1 transition-all" />
+                    <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5 text-white/60 group-hover:text-white group-hover:translate-x-1 transition-all flex-shrink-0" />
                   </div>
                 </div>
               </Link>
@@ -169,28 +215,28 @@ export default function Landing() {
       </section>
 
       {/* Trusted By Section - Matching salespatriot style */}
-      <section className="py-20 bg-[#1a1a1a]">
-        <div className="max-w-7xl mx-auto px-6 text-center">
-          <h2 className="text-xl md:text-2xl font-semibold text-white mb-3">
+      <section className="py-12 sm:py-16 md:py-20 bg-[#1a1a1a]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 text-center">
+          <h2 className="text-lg sm:text-xl md:text-2xl font-semibold text-white mb-2 sm:mb-3 px-4">
             Trusted By Leading Healthcare Providers
           </h2>
-          <p className="text-white/80 text-sm md:text-base mb-12">
+          <p className="text-white/80 text-xs sm:text-sm md:text-base mb-8 sm:mb-12 px-4">
             Proudly serving patients and doctors across the healthcare ecosystem.
           </p>
           
           {/* Trust badges */}
-          <div className="flex flex-wrap items-center justify-center gap-8 md:gap-12">
+          <div className="flex flex-col sm:flex-row flex-wrap items-center justify-center gap-4 sm:gap-6 md:gap-8 lg:gap-12">
             <div className="flex items-center gap-2 text-white/90">
-              <Shield className="h-5 w-5 text-green-400" />
-              <span className="text-xs md:text-sm font-medium">HIPAA Compliant</span>
+              <Shield className="h-4 w-4 sm:h-5 sm:w-5 text-green-400 flex-shrink-0" />
+              <span className="text-xs sm:text-sm font-medium">HIPAA Compliant</span>
             </div>
             <div className="flex items-center gap-2 text-white/90">
-              <Activity className="h-5 w-5 text-blue-400" />
-              <span className="text-xs md:text-sm font-medium">Powered by CareBridge AI</span>
+              <Activity className="h-4 w-4 sm:h-5 sm:w-5 text-blue-400 flex-shrink-0" />
+              <span className="text-xs sm:text-sm font-medium">Powered by CareBridge AI</span>
             </div>
             <div className="flex items-center gap-2 text-white/90">
-              <CheckCircle className="h-5 w-5 text-purple-400" />
-              <span className="text-xs md:text-sm font-medium">Secure & Encrypted</span>
+              <CheckCircle className="h-4 w-4 sm:h-5 sm:w-5 text-purple-400 flex-shrink-0" />
+              <span className="text-xs sm:text-sm font-medium">Secure & Encrypted</span>
             </div>
           </div>
         </div>
@@ -198,14 +244,14 @@ export default function Landing() {
 
 
       {/* Footer - Dark theme */}
-      <footer className="py-8 border-t border-white/10 bg-[#1a1a1a]">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="flex flex-col md:flex-row items-center justify-between gap-4">
-            <Logo size="sm" />
-            <div className="flex items-center gap-4 text-xs text-white/70">
+      <footer className="py-6 sm:py-8 border-t border-white/10 bg-[#1a1a1a]">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6">
+          <div className="flex flex-col sm:flex-row items-center justify-center sm:justify-between gap-3 sm:gap-4">
+            <Logo size="sm" bridgeColor="text-white" />
+            <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4 text-xs text-white/70">
               <span>Powered by CareBridge AI</span>
               <span className="flex items-center gap-1">
-                <Shield className="h-4 w-4 text-green-400" />
+                <Shield className="h-3 w-3 sm:h-4 sm:w-4 text-green-400 flex-shrink-0" />
                 HIPAA Compliant
               </span>
             </div>
