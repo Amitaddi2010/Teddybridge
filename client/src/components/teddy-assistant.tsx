@@ -85,6 +85,7 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
   const recognitionRef = useRef<SpeechRecognition | null>(null);
   const synthesisRef = useRef<SpeechSynthesisUtterance | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const streamRef = useRef<MediaStream | null>(null); // Store the stream separately
   const audioChunksRef = useRef<Blob[]>([]);
   const inputStateRef = useRef({ input: "", transcript: "" });
   const manuallyStoppedRef = useRef(false); // Track if user manually stopped listening
@@ -284,6 +285,7 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
    */
   const restartListeningAfterTTS = useCallback(() => {
     // Use a delay to ensure audio has fully stopped and React state has updated
+    // Reduced delay for faster response (600ms instead of 800ms)
     setTimeout(() => {
       // Check all conditions using refs exclusively (always current, no stale closures)
       const shouldRestart = 
@@ -295,7 +297,12 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
       
       if (shouldRestart) {
         console.log('[Teddy] ✅ Restarting listening after TTS');
-        startListening();
+        // Small additional delay to ensure audio context is fully cleared
+        setTimeout(() => {
+          if (speechModeRef.current && isOpenRef.current && !manuallyStoppedRef.current && !isListeningRef.current && !isSpeakingRef.current) {
+            startListening();
+          }
+        }, 200);
       } else {
         console.log('[Teddy] ⏸️ Skipping restart:', {
           speechMode: speechModeRef.current,
@@ -305,7 +312,7 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
           isSpeaking: isSpeakingRef.current
         });
       }
-    }, 800); // Delay to ensure audio has fully stopped
+    }, 600); // Reduced delay for faster response
   }, []); // No dependencies - uses refs exclusively
 
   const startListening = async () => {
@@ -321,11 +328,75 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
         manuallyStoppedRef.current = false;
         setIsListening(true);
         
-        // Get user media
-        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-        const mediaRecorder = new MediaRecorder(stream, { mimeType: 'audio/webm' });
+        // Get user media with better audio settings
+        const stream = await navigator.mediaDevices.getUserMedia({ 
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+            sampleRate: 16000, // Optimal for speech recognition
+          } 
+        });
+        
+        const mediaRecorder = new MediaRecorder(stream, { 
+          mimeType: 'audio/webm;codecs=opus',
+          audioBitsPerSecond: 16000 // Lower bitrate for faster processing
+        });
         mediaRecorderRef.current = mediaRecorder;
+        streamRef.current = stream; // Store stream separately
         audioChunksRef.current = [];
+        
+        // Track last audio activity for better silence detection
+        let lastAudioActivity = Date.now();
+        let silenceTimeout: NodeJS.Timeout | null = null;
+        let recordingTimeout: NodeJS.Timeout | null = null;
+        const MAX_RECORDING_TIME = 30000; // 30 seconds max
+        const SILENCE_THRESHOLD = 2000; // 2 seconds of silence
+        
+        // Use AudioContext for better silence detection
+        const audioContext = new AudioContext({ sampleRate: 16000 });
+        const source = audioContext.createMediaStreamSource(stream);
+        const analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+        analyser.smoothingTimeConstant = 0.3;
+        source.connect(analyser);
+        
+        const dataArray = new Uint8Array(analyser.frequencyBinCount);
+        let isRecording = true;
+        
+        // Voice Activity Detection (VAD) loop
+        const checkAudioLevel = () => {
+          if (!isRecording || manuallyStoppedRef.current) return;
+          
+          analyser.getByteFrequencyData(dataArray);
+          const average = dataArray.reduce((a, b) => a + b) / dataArray.length;
+          const threshold = 20; // Adjust based on testing
+          
+          if (average > threshold) {
+            // Audio detected - reset silence timer
+            lastAudioActivity = Date.now();
+            if (silenceTimeout) {
+              clearTimeout(silenceTimeout);
+              silenceTimeout = null;
+            }
+          } else {
+            // Silence detected - check if we should stop
+            const silenceDuration = Date.now() - lastAudioActivity;
+            if (silenceDuration >= SILENCE_THRESHOLD && !silenceTimeout) {
+              // Stop after silence threshold
+              silenceTimeout = setTimeout(() => {
+                if (mediaRecorder.state === 'recording' && !manuallyStoppedRef.current) {
+                  mediaRecorder.stop();
+                  isRecording = false;
+                }
+              }, 100);
+            }
+          }
+          
+          if (isRecording) {
+            requestAnimationFrame(checkAudioLevel);
+          }
+        };
         
         mediaRecorder.ondataavailable = (event) => {
           if (event.data.size > 0) {
@@ -334,8 +405,20 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
         };
         
         mediaRecorder.onstop = async () => {
+          isRecording = false;
+          if (silenceTimeout) clearTimeout(silenceTimeout);
+          if (recordingTimeout) clearTimeout(recordingTimeout);
+          
+          // Clean up audio context
+          audioContext.close();
+          source.disconnect();
+          analyser.disconnect();
+          
           // Stop all tracks
-          stream.getTracks().forEach(track => track.stop());
+          if (streamRef.current) {
+            streamRef.current.getTracks().forEach(track => track.stop());
+            streamRef.current = null;
+          }
           
           // Don't process audio if manually stopped or if Teddy is speaking
           // This prevents processing audio that might contain TTS feedback
@@ -354,12 +437,12 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
             console.warn('No audio data recorded, skipping transcription');
             setIsListening(false);
             // Auto-restart if in speech mode
-            if (isSpeechMode && isOpen && !manuallyStoppedRef.current) {
+            if (speechModeRef.current && isOpenRef.current && !manuallyStoppedRef.current) {
               setTimeout(() => {
-                if (!manuallyStoppedRef.current) {
+                if (!manuallyStoppedRef.current && !isListeningRef.current && !isSpeakingRef.current) {
                   startListening();
                 }
-              }, 300);
+              }, 500);
             }
             return;
           }
@@ -367,7 +450,16 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
           // Ensure minimum audio size (at least a few KB)
           if (audioBlob.size < 1024) {
             console.warn('Audio data too small, might be invalid');
-            // Still try to send it, but log a warning
+            setIsListening(false);
+            // Auto-restart if in speech mode
+            if (speechModeRef.current && isOpenRef.current && !manuallyStoppedRef.current) {
+              setTimeout(() => {
+                if (!manuallyStoppedRef.current && !isListeningRef.current && !isSpeakingRef.current) {
+                  startListening();
+                }
+              }, 500);
+            }
+            return;
           }
           
           try {
@@ -378,6 +470,7 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
               if (!result || !result.includes(',')) {
                 console.error('Invalid FileReader result');
                 setUseCloudSTT(false);
+                setIsListening(false);
                 startListeningBrowser();
                 return;
               }
@@ -387,58 +480,105 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
               if (!base64Audio || base64Audio.length === 0) {
                 console.error('Invalid base64 audio data');
                 setUseCloudSTT(false);
+                setIsListening(false);
                 startListeningBrowser();
                 return;
               }
               
               try {
-                const response = await apiRequest("POST", "/api/teddy/stt", {
-                  audio: base64Audio,
-                });
+                let response: Response;
+                try {
+                  response = await apiRequest("POST", "/api/teddy/stt", {
+                    audio: base64Audio,
+                  });
+                } catch (fetchError: any) {
+                  console.error('STT API request failed:', fetchError);
+                  // Fallback to browser STT on network errors
+                  setUseCloudSTT(false);
+                  setIsListening(false);
+                  startListeningBrowser();
+                  return;
+                }
                 
                 const data = await response.json();
                 
                 if (data.transcript && !data.fallback) {
                   const transcript = data.transcript.trim();
-                  if (transcript) {
+                  if (transcript && transcript.length > 0) {
                     // Submit immediately
                     setInput('');
                     setTranscript('');
+                    setIsListening(false);
                     askTeddyMutation.mutate(transcript);
+                  } else {
+                    // Empty transcript - restart listening
+                    setIsListening(false);
+                    if (speechModeRef.current && isOpenRef.current && !manuallyStoppedRef.current) {
+                      setTimeout(() => {
+                        if (!manuallyStoppedRef.current && !isListeningRef.current && !isSpeakingRef.current) {
+                          startListening();
+                        }
+                      }, 500);
+                    }
                   }
                 } else if (data.fallback) {
                   // Fallback to browser STT
                   setUseCloudSTT(false);
+                  setIsListening(false);
                   startListeningBrowser();
+                } else {
+                  // No transcript - restart listening
+                  setIsListening(false);
+                  if (speechModeRef.current && isOpenRef.current && !manuallyStoppedRef.current) {
+                    setTimeout(() => {
+                      if (!manuallyStoppedRef.current && !isListeningRef.current && !isSpeakingRef.current) {
+                        startListening();
+                      }
+                    }, 500);
+                  }
                 }
               } catch (error) {
-                console.error('Cloud STT error:', error);
-                // Fallback to browser STT
+                console.error('Cloud STT processing error:', error);
+                // Fallback to browser STT on any error
                 setUseCloudSTT(false);
-                startListeningBrowser();
+                setIsListening(false);
+                // Only restart if in speech mode and not manually stopped
+                if (speechModeRef.current && isOpenRef.current && !manuallyStoppedRef.current) {
+                  setTimeout(() => {
+                    if (!manuallyStoppedRef.current && !isListeningRef.current && !isSpeakingRef.current) {
+                      startListeningBrowser();
+                    }
+                  }, 500);
+                }
               }
             };
             reader.readAsDataURL(audioBlob);
           } catch (error) {
             console.error('Error processing audio:', error);
             setUseCloudSTT(false);
+            setIsListening(false);
             startListeningBrowser();
           }
         };
         
         // Start recording
-        mediaRecorder.start();
+        mediaRecorder.start(100); // Collect data every 100ms for better real-time feel
         
-        // Stop recording after 5 seconds of silence or when manually stopped
-        setTimeout(() => {
+        // Start VAD loop
+        checkAudioLevel();
+        
+        // Safety timeout - stop after max recording time
+        recordingTimeout = setTimeout(() => {
           if (mediaRecorder.state === 'recording' && !manuallyStoppedRef.current) {
             mediaRecorder.stop();
+            isRecording = false;
           }
-        }, 5000);
+        }, MAX_RECORDING_TIME);
         
       } catch (error) {
         console.error('Error starting cloud STT, falling back to browser:', error);
         setUseCloudSTT(false);
+        setIsListening(false);
         startListeningBrowser();
       }
     } else {
@@ -452,10 +592,89 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
     if (recognitionRef.current && !isListening && !isSpeaking) {
       try {
         manuallyStoppedRef.current = false; // Reset manual stop flag when starting
+        
+        // Configure browser STT for better performance
+        recognitionRef.current.continuous = true; // Keep listening
+        recognitionRef.current.interimResults = true; // Get interim results for better UX
+        recognitionRef.current.lang = 'en-US';
+        
+        // Handle interim results for better UX
+        recognitionRef.current.onresult = (event: SpeechRecognitionEvent) => {
+          let interimTranscript = '';
+          let finalTranscript = '';
+          
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            const transcript = event.results[i][0].transcript;
+            if (event.results[i].isFinal) {
+              finalTranscript += transcript + ' ';
+            } else {
+              interimTranscript += transcript;
+            }
+          }
+          
+          // Update transcript for display
+          if (interimTranscript) {
+            setTranscript(interimTranscript);
+          }
+          
+          // Auto-submit when we get a final result
+          if (finalTranscript.trim()) {
+            const cleanTranscript = finalTranscript.trim();
+            setInput('');
+            setTranscript('');
+            setIsListening(false);
+            askTeddyMutation.mutate(cleanTranscript);
+          }
+        };
+        
+        recognitionRef.current.onerror = (event: SpeechRecognitionErrorEvent) => {
+          console.error('Speech recognition error:', event.error);
+          setIsListening(false);
+          
+          // Auto-restart on certain errors
+          if (event.error === 'no-speech' || event.error === 'audio-capture') {
+            if (speechModeRef.current && isOpenRef.current && !manuallyStoppedRef.current) {
+              setTimeout(() => {
+                if (!manuallyStoppedRef.current && !isListeningRef.current && !isSpeakingRef.current) {
+                  startListeningBrowser();
+                }
+              }, 1000);
+            }
+          }
+        };
+        
+        recognitionRef.current.onend = () => {
+          setIsListening(false);
+          
+          // Auto-restart if in speech mode and not manually stopped
+          if (speechModeRef.current && isOpenRef.current && !manuallyStoppedRef.current && !isSpeakingRef.current) {
+            setTimeout(() => {
+              if (!manuallyStoppedRef.current && !isListeningRef.current && !isSpeakingRef.current) {
+                startListeningBrowser();
+              }
+            }, 500);
+          }
+        };
+        
         recognitionRef.current.start();
         setIsListening(true);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error starting speech recognition:', error);
+        setIsListening(false);
+        
+        // If error is "already started", try to stop and restart
+        if (error.message?.includes('already') || error.name === 'InvalidStateError') {
+          try {
+            recognitionRef.current?.stop();
+            setTimeout(() => {
+              if (!manuallyStoppedRef.current && !isSpeakingRef.current) {
+                startListeningBrowser();
+              }
+            }, 500);
+          } catch (retryError) {
+            console.error('Error retrying speech recognition:', retryError);
+          }
+        }
       }
     }
   };
@@ -467,12 +686,21 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       try {
         mediaRecorderRef.current.stop();
-        // Stop all tracks
-        if (mediaRecorderRef.current.stream) {
-          mediaRecorderRef.current.stream.getTracks().forEach(track => track.stop());
-        }
       } catch (error) {
         console.error('Error stopping MediaRecorder:', error);
+      }
+    }
+    
+    // Stop all tracks from the stream
+    if (streamRef.current) {
+      try {
+        streamRef.current.getTracks().forEach(track => {
+          track.stop();
+          track.enabled = false;
+        });
+        streamRef.current = null;
+      } catch (error) {
+        console.error('Error stopping stream tracks:', error);
       }
     }
     
@@ -544,10 +772,20 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
       try {
         setIsSpeaking(true);
         
-        const response = await apiRequest("POST", "/api/teddy/tts", {
-          text: sanitizedText,
-          voice: 'Basil-PlayAI', // Natural, friendly voice from Groq
-        });
+        let response: Response;
+        try {
+          response = await apiRequest("POST", "/api/teddy/tts", {
+            text: sanitizedText,
+            voice: 'Basil-PlayAI', // Natural, friendly voice from Groq
+          });
+        } catch (fetchError: any) {
+          console.error('TTS API request failed:', fetchError);
+          // Fallback to browser TTS on network errors
+          setIsSpeaking(false);
+          setUseCloudTTS(false);
+          speakTextBrowser(sanitizedText);
+          return;
+        }
         
         const data = await response.json();
         
@@ -597,30 +835,51 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
 
   const speakTextBrowser = (text: string) => {
     if ('speechSynthesis' in window) {
-      window.speechSynthesis.cancel(); // Cancel any ongoing speech
+      // Cancel any ongoing speech immediately
+      window.speechSynthesis.cancel();
+      
+      // Small delay to ensure cancellation is processed
+      setTimeout(() => {
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 1.0; // Natural speaking rate
+        utterance.pitch = 1.0; // Natural pitch
+        utterance.volume = 1.0; // Full volume
+        utterance.lang = 'en-US';
 
-      const utterance = new SpeechSynthesisUtterance(text);
-      utterance.rate = 1.0;
-      utterance.pitch = 1.0;
-      utterance.volume = 1.0;
-      utterance.lang = 'en-US';
+        utterance.onstart = () => {
+          setIsSpeaking(true);
+          // Ensure listening is stopped when speaking starts
+          if (isListening) {
+            stopListening();
+          }
+        };
 
-      utterance.onstart = () => {
-        setIsSpeaking(true);
-      };
+        utterance.onend = () => {
+          setIsSpeaking(false);
+          // Restart listening after browser TTS completes
+          restartListeningAfterTTS();
+        };
 
-      utterance.onend = () => {
-        setIsSpeaking(false);
-        // Restart listening after browser TTS completes
-        restartListeningAfterTTS();
-      };
+        utterance.onerror = (event) => {
+          console.error('Speech synthesis error:', event);
+          setIsSpeaking(false);
+          // Still try to restart listening even on error
+          if (speechModeRef.current && isOpenRef.current && !manuallyStoppedRef.current) {
+            restartListeningAfterTTS();
+          }
+        };
 
-      utterance.onerror = () => {
-        setIsSpeaking(false);
-      };
+        utterance.onpause = () => {
+          // Handle pause - don't clear speaking state immediately
+        };
 
-      synthesisRef.current = utterance;
-      window.speechSynthesis.speak(utterance);
+        utterance.onresume = () => {
+          // Handle resume
+        };
+
+        synthesisRef.current = utterance;
+        window.speechSynthesis.speak(utterance);
+      }, 100);
     }
   };
 
@@ -653,12 +912,26 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
 
   const askTeddyMutation = useMutation({
     mutationFn: async (question: string) => {
-      const response = await apiRequest("POST", "/api/teddy/ask", {
-        question,
-        role: userRole,
-      });
-      const data = await response.json();
-      return data as { answer: string; action?: string; doctorId?: string; doctorName?: string };
+      try {
+        const response = await apiRequest("POST", "/api/teddy/ask", {
+          question,
+          role: userRole,
+        });
+        const data = await response.json();
+        return data as { answer: string; action?: string; doctorId?: string; doctorName?: string };
+      } catch (error: any) {
+        // Provide more helpful error messages
+        if (error instanceof TypeError && error.message.includes('Failed to fetch')) {
+          throw new Error('Unable to connect to the server. Please check your internet connection and try again.');
+        }
+        if (error instanceof Error && error.message.includes('401')) {
+          throw new Error('Session expired. Please refresh the page and try again.');
+        }
+        if (error instanceof Error && error.message.includes('500')) {
+          throw new Error('Server error. Please try again in a moment.');
+        }
+        throw error;
+      }
     },
     onSuccess: async (data, question) => {
       setMessages((prev) => [
@@ -705,14 +978,22 @@ export function TeddyAssistant({ userRole }: TeddyAssistantProps) {
       }
     },
     onError: (error) => {
+      console.error('Teddy AI error:', error);
+      const errorMessage = error instanceof Error ? error.message : "Please try again later.";
+      
       setMessages((prev) => [
         ...prev,
         {
           role: "assistant",
-          content: `Sorry, I encountered an error: ${error instanceof Error ? error.message : "Please try again later."}`,
+          content: `Sorry, I encountered an error: ${errorMessage}`,
           timestamp: new Date(),
         },
       ]);
+      
+      // Stop listening if in speech mode to avoid feedback loop
+      if (isSpeechMode && isListening) {
+        stopListening();
+      }
     },
   });
 

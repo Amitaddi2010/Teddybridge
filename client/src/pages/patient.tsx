@@ -3,6 +3,7 @@ import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Logo } from "@/components/logo";
+import { AnimatedConnectingLines } from "@/components/animated-connecting-lines";
 import { 
   Users, 
   Search,
@@ -696,86 +697,58 @@ export default function PatientPage() {
                 <div className="w-full lg:w-1/2 flex items-center justify-center p-1 sm:p-2 lg:p-8 min-h-[300px] mb-16 md:mb-8 lg:mb-0 lg:min-h-0 animate-on-scroll fade-right">
                   <div className="w-full h-full flex items-center justify-center scale-65 sm:scale-80 lg:scale-100">
                     <div className="w-full h-full flex flex-col items-center justify-center relative" style={{ minHeight: "400px" }}>
-                      {/* Source labels at top - aligned with line start points */}
-                      <div className="relative w-full mb-6 animate-on-scroll fade-up" style={{ height: "32px" }}>
-                        {["PEER NETWORK", "SUPPORT GROUPS", "HEALTH PARTNERS", "RECOVERY BUDDIES"].map((source, idx) => {
-                          const positions = ["15%", "35%", "55%", "75%"];
-                          return (
-                            <div 
-                              key={idx}
-                              className="absolute animate-on-scroll fade-up"
-                              style={{ 
-                                left: positions[idx],
-                                transform: "translateX(-50%)",
-                                top: "0",
-                                animationDelay: `${idx * 0.1}s`,
-                                fontFamily: "Inter, sans-serif"
+                      {/* Source labels at top - Marquee animation */}
+                      <div className="relative w-full mb-6 overflow-hidden" style={{ height: "32px" }}>
+                        <div 
+                          className="flex items-center gap-8 animate-marquee"
+                          style={{
+                            fontFamily: "Inter, sans-serif",
+                            whiteSpace: "nowrap",
+                            width: "fit-content"
+                          }}
+                        >
+                          {/* First set of labels */}
+                          {["PEER", "SUPPORT", "HEALTH", "RECOVERY"].map((source, idx) => (
+                            <span 
+                              key={`first-${idx}`}
+                              className="text-[11px] font-semibold text-gray-700 uppercase tracking-wider inline-block"
+                              style={{
+                                letterSpacing: "0.05em",
+                                fontWeight: 600
                               }}
                             >
-                              <span 
-                                className="text-[11px] font-semibold text-gray-700 uppercase tracking-wider"
-                                style={{
-                                  letterSpacing: "0.05em",
-                                  fontWeight: 600
-                                }}
-                              >
-                                {source}
-                              </span>
-                            </div>
-                          );
-                        })}
+                              {source}
+                            </span>
+                          ))}
+                          {/* Duplicate set for seamless loop */}
+                          {["PEER", "SUPPORT", "HEALTH", "RECOVERY"].map((source, idx) => (
+                            <span 
+                              key={`second-${idx}`}
+                              className="text-[11px] font-semibold text-gray-700 uppercase tracking-wider inline-block"
+                              style={{
+                                letterSpacing: "0.05em",
+                                fontWeight: 600
+                              }}
+                            >
+                              {source}
+                            </span>
+                          ))}
+                        </div>
                       </div>
                       
-                      {/* Animated curved data flow lines with SVG */}
-                      <div className="absolute top-14 left-0 right-0 h-32 flex items-center justify-center pointer-events-none">
-                        <svg width="100%" height="100%" className="absolute" style={{ overflow: "visible" }}>
-                          <defs>
-                            <style>{`
-                              .data-flow-path {
-                                fill: none;
-                                stroke: #3b82f6;
-                                stroke-width: 1.5;
-                                stroke-dasharray: 6, 4;
-                                stroke-opacity: 0.6;
-                                stroke-linecap: round;
-                                animation: dataFlow 2.5s linear infinite;
-                              }
-                            `}</style>
-                          </defs>
-                          {[
-                            { startX: "15%", startY: "0%", endX: "25%", endY: "100%", controlX: "20%", controlY: "50%", pathId: "path1" },
-                            { startX: "35%", startY: "0%", endX: "40%", endY: "100%", controlX: "37.5%", controlY: "50%", pathId: "path2" },
-                            { startX: "55%", startY: "0%", endX: "55%", endY: "100%", controlX: "55%", controlY: "50%", pathId: "path3" },
-                            { startX: "75%", startY: "0%", endX: "70%", endY: "100%", controlX: "72.5%", controlY: "50%", pathId: "path4" },
-                          ].map((curve, idx) => (
-                            <g key={idx}>
-                              <path
-                                id={curve.pathId}
-                                d={`M ${curve.startX} ${curve.startY} Q ${curve.controlX} ${curve.controlY} ${curve.endX} ${curve.endY}`}
-                                className="data-flow-path"
-                                style={{ animationDelay: `${idx * 0.4}s` }}
-                              />
-                              {/* Animated circle following the path */}
-                              <circle r="3" fill="#3b82f6" opacity="0.9">
-                                <animateMotion
-                                  dur="2s"
-                                  repeatCount="indefinite"
-                                  begin={`${idx * 0.4}s`}
-                                >
-                                  <mpath href={`#${curve.pathId}`} />
-                                </animateMotion>
-                                <animate
-                                  attributeName="opacity"
-                                  values="0;1;1;0"
-                                  dur="2s"
-                                  repeatCount="indefinite"
-                                  begin={`${idx * 0.4}s`}
-                                />
-                              </circle>
-                            </g>
-                          ))}
-                        </svg>
-                      </div>
+                      {/* Animated curved connecting lines with pulse effects */}
+                      <AnimatedConnectingLines
+                        labels={["PEER", "SUPPORT", "HEALTH", "RECOVERY"]}
+                        labelPositions={["15%", "35%", "55%", "75%"]}
+                        targetPositions={["20%", "35%", "55%", "70%"]}
+                        color="#3b82f6"
+                        pathConfigs={[
+                          { startX: "15%", startY: "0%", endX: "20%", endY: "100%", controlX: "17.5%", controlY: "50%" },
+                          { startX: "35%", startY: "0%", endX: "35%", endY: "100%", controlX: "35%", controlY: "50%" },
+                          { startX: "55%", startY: "0%", endX: "55%", endY: "100%", controlX: "55%", controlY: "50%" },
+                          { startX: "75%", startY: "0%", endX: "70%", endY: "100%", controlX: "72.5%", controlY: "50%" },
+                        ]}
+                      />
                       
                       {/* Window box with table */}
                       <div className="table-container animate-on-scroll scale mt-20" style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: "600px" }}>

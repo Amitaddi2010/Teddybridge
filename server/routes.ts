@@ -4289,13 +4289,20 @@ export async function registerRoutes(
           context += `1. FIRST, search the AVAILABLE DOCTORS list above by:\n`;
           context += `   - Matching names (be flexible: "Amit Saraswat" matches "Dr. Amit Kumar Saraswat", "Amit Saraswat", etc.)\n`;
           context += `   - Matching phone numbers (compare digits only, ignore spaces/dashes/formatting)\n`;
-          context += `2. If you find a match, respond with the doctor's EXACT details from the list above:\n`;
-          context += `   - Say: "I found Dr. [exact name from list] - Phone: [exact phone from list], Specialty: [specialty]. I can help you initiate a call to them."\n`;
+          context += `2. If you find a match, check the phone number:\n`;
+          context += `   - If phone number is "Not available" or missing:\n`;
+          context += `     * Say: "I found Dr. [name] - Phone: Not available, Specialty: [specialty]. Unfortunately, I cannot initiate a call because Dr. [name]'s phone number is not available in the system."\n`;
+          context += `     * DO NOT offer to initiate a call\n`;
+          context += `     * DO NOT say "Would you like me to initiate the call?"\n`;
+          context += `     * Suggest alternative contact methods (email, dashboard messaging)\n`;
+          context += `   - If phone number IS available:\n`;
+          context += `     * Say: "I found Dr. [exact name from list] - Phone: [exact phone from list], Specialty: [specialty]. I can help you initiate a call to them."\n`;
+          context += `     * Offer to initiate the call\n`;
           context += `   - DO NOT give generic instructions about navigating the UI\n`;
           context += `   - DO NOT tell them to search manually\n`;
           context += `   - Provide the specific information you found\n`;
           context += `3. If NO match is found in the list, then say: "I couldn't find [name/phone] in the available doctors list. They may not be registered on the platform yet, or you might need to add them first."\n`;
-          context += `\nCRITICAL: Always check the AVAILABLE DOCTORS list FIRST before responding about calls.\n`;
+          context += `\nCRITICAL: Always check the AVAILABLE DOCTORS list FIRST before responding about calls. NEVER offer to call if phone number is "Not available".\n`;
         } else {
           context += `\nNo other doctors are currently available to call.\n`;
         }
@@ -4787,6 +4794,7 @@ export async function registerRoutes(
         if (foundDoctor) {
           const phoneNumber = foundDoctor.doctorProfile?.phoneNumber || foundDoctor.phoneNumber || 'Not available';
           const specialty = foundDoctor.doctorProfile?.specialty || 'General';
+          const hasPhoneNumber = phoneNumber && phoneNumber !== 'Not available' && phoneNumber.trim().length > 0;
           // Clean up name to avoid duplicate "Dr" prefix
           let doctorName = foundDoctor.name || '';
           doctorName = doctorName.replace(/^Dr\.?\s+/i, '').trim(); // Remove leading "Dr" or "Dr."
@@ -4797,18 +4805,32 @@ export async function registerRoutes(
           context += `Phone: ${phoneNumber}\n`;
           context += `Specialty: ${specialty}\n`;
           context += `ID: ${foundDoctor.id}\n`;
-          context += `\nYou MUST respond with the exact information above. Do NOT give generic UI navigation instructions.`;
-          context += `\nSay: "I found Dr. ${doctorName} - Phone: ${phoneNumber}, Specialty: ${specialty}. Would you like me to initiate the call?"\n`;
-          context += `\nIf the user responds with "yes", "yeah", "yep", "okay", "ok", "sure", "please", or "initiate", you should respond with:\n`;
-          context += `"Perfect! I'll initiate the call to Dr. ${doctorName} now. You will receive a phone call shortly. The call will connect both you and Dr. ${doctorName} in a secure conference call."\n`;
-          context += `\nIMPORTANT: When user confirms they want to call, acknowledge it and explain what will happen next.`;
           
-          // Store the found doctor in session for confirmation handling
-          (req.session as any).lastFoundDoctorForCall = {
-            id: foundDoctor.id,
-            name: doctorName
-          };
-          console.log(`[Teddy] Stored doctor in session for confirmation:`, (req.session as any).lastFoundDoctorForCall);
+          if (hasPhoneNumber) {
+            // Doctor has a phone number - can initiate call
+            context += `\nYou MUST respond with the exact information above. Do NOT give generic UI navigation instructions.`;
+            context += `\nSay: "I found Dr. ${doctorName} - Phone: ${phoneNumber}, Specialty: ${specialty}. Would you like me to initiate the call?"\n`;
+            context += `\nIf the user responds with "yes", "yeah", "yep", "okay", "ok", "sure", "please", or "initiate", you should respond with:\n`;
+            context += `"Perfect! I'll initiate the call to Dr. ${doctorName} now. You will receive a phone call shortly. The call will connect both you and Dr. ${doctorName} in a secure conference call."\n`;
+            context += `\nIMPORTANT: When user confirms they want to call, acknowledge it and explain what will happen next.`;
+            
+            // Store the found doctor in session for confirmation handling
+            (req.session as any).lastFoundDoctorForCall = {
+              id: foundDoctor.id,
+              name: doctorName
+            };
+            console.log(`[Teddy] Stored doctor in session for confirmation:`, (req.session as any).lastFoundDoctorForCall);
+          } else {
+            // Doctor does NOT have a phone number - cannot initiate call
+            context += `\n⚠️ CRITICAL: This doctor's phone number is "Not available". You CANNOT initiate a call without a phone number.\n`;
+            context += `\nYou MUST respond with:\n`;
+            context += `"I found Dr. ${doctorName} - Phone: Not available, Specialty: ${specialty}. Unfortunately, I cannot initiate a call because Dr. ${doctorName}'s phone number is not available in the system. You may want to contact them via email (${foundDoctor.email || 'email not available'}) or through other communication channels."\n`;
+            context += `\nDO NOT offer to initiate a call. DO NOT say "Would you like me to initiate the call?" DO NOT store this doctor for call initiation.`;
+            
+            // Clear any previous call session data
+            (req.session as any).lastFoundDoctorForCall = undefined;
+          }
+          
           // Save session to ensure it persists
           await new Promise<void>((resolve) => {
             req.session.save((err) => {
