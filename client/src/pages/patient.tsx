@@ -26,7 +26,8 @@ import {
   Circle,
   LogIn,
   Menu,
-  X
+  X,
+  Heart
 } from "lucide-react";
 
 export default function PatientPage() {
@@ -209,7 +210,7 @@ export default function PatientPage() {
                 {/* Left Content */}
                 <div className="text-center sm:mx-auto lg:mx-0 lg:text-left relative z-10">
                   <div className="bg-white/10 backdrop-blur-sm border border-white/20 inline-flex items-center gap-2 rounded-full px-4 py-1.5 mb-6">
-                    <span style={{ fontSize: "12px" }}>🇺🇸</span>
+                    <Heart className="h-4 w-4 text-red-400" />
                     <span className="text-sm font-medium">For Patients</span>
                   </div>
                   <h1 className="mt-3 max-w-2xl mx-auto lg:mx-0 text-balance sm:text-5xl text-4xl font-medium lg:text-6xl xl:text-6xl lg:mt-6 tracking-tight text-gray-900">
@@ -256,54 +257,64 @@ export default function PatientPage() {
                     <table className="w-full text-xs">
                       <thead className="bg-gray-50 border-b border-gray-200">
                         <tr>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Connection</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Description</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Match</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Has Peers</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Peers</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Qty</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Type</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Connection ID</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Procedure Type</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Match %</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Verified</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Matched Peers</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Recovery Stage</th>
                           <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Status</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Created</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Expires</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Joined</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Last Active</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-100">
                         {[
-                          { connection: "TED-2025-001", description: "PEER CONNECTION, RECOVERY", match: "98%", hasPeers: true, peers: "81413", qty: "6", type: "EA", status: "Available", created: "6/20/25", expires: "7/20/25" },
-                          { connection: "TED-2025-002", description: "SUPPORT GROUP, POST-OP", match: "95%", hasPeers: true, peers: "56878", qty: "12", type: "EA", status: "Available", created: "6/19/25", expires: "7/19/25" },
-                          { connection: "TED-2025-003", description: "HEALTH PARTNER, FOLLOW-UP", match: "92%", hasPeers: true, peers: "4QBJ8", qty: "4", type: "EA", status: "Pending", created: "6/18/25", expires: "7/18/25" },
-                          { connection: "TED-2025-004", description: "RECOVERY BUDDY, PRE-OP", match: "89%", hasPeers: true, peers: "2U435, 8PGY8, 6PZL1 + 1 more", qty: "8", type: "EA", status: "Available", created: "6/17/25", expires: "7/17/25" },
-                          { connection: "TED-2025-005", description: "PEER NETWORK, ACTIVE", match: "96%", hasPeers: true, peers: "3K9M2", qty: "10", type: "EA", status: "Connected", created: "6/16/25", expires: "7/16/25" },
-                          { connection: "TED-2025-006", description: "SUPPORT GROUP, CHRONIC", match: "91%", hasPeers: false, peers: "-", qty: "5", type: "EA", status: "Available", created: "6/15/25", expires: "7/15/25" },
-                          { connection: "TED-2025-007", description: "HEALTH PARTNER, ACUTE", match: "94%", hasPeers: true, peers: "7X4M2", qty: "3", type: "EA", status: "Pending", created: "6/14/25", expires: "7/14/25" },
-                          { connection: "TED-2025-008", description: "PEER NETWORK, RECOVERY", match: "97%", hasPeers: true, peers: "9N5P1", qty: "7", type: "EA", status: "Available", created: "6/13/25", expires: "7/13/25" },
+                          { connection: "TED-2025-001", procedure: "Knee Surgery", match: "94%", verified: true, matchedPeers: "6", recoveryStage: "Post-Op", status: "Active", joined: "Jan 20, 2025", lastActive: "2 days ago" },
+                          { connection: "TED-2025-002", procedure: "Hip Replacement", match: "92%", verified: true, matchedPeers: "8", recoveryStage: "Recovery", status: "Active", joined: "Jan 19, 2025", lastActive: "1 day ago" },
+                          { connection: "TED-2025-003", procedure: "Cardiac Surgery", match: "91%", verified: true, matchedPeers: "4", recoveryStage: "Follow-Up", status: "Pending", joined: "Jan 18, 2025", lastActive: "3 days ago" },
+                          { connection: "TED-2025-004", procedure: "Shoulder Surgery", match: "89%", verified: true, matchedPeers: "5", recoveryStage: "Pre-Op", status: "Active", joined: "Jan 17, 2025", lastActive: "Today" },
+                          { connection: "TED-2025-005", procedure: "Knee Surgery", match: "96%", verified: true, matchedPeers: "12", recoveryStage: "Recovery", status: "Connected", joined: "Jan 16, 2025", lastActive: "Today" },
+                          { connection: "TED-2025-006", procedure: "Chronic Pain", match: "88%", verified: false, matchedPeers: "0", recoveryStage: "Ongoing", status: "Available", joined: "Jan 15, 2025", lastActive: "5 days ago" },
+                          { connection: "TED-2025-007", procedure: "Spinal Surgery", match: "93%", verified: true, matchedPeers: "3", recoveryStage: "Acute", status: "Pending", joined: "Jan 14, 2025", lastActive: "4 days ago" },
+                          { connection: "TED-2025-008", procedure: "Joint Replacement", match: "95%", verified: true, matchedPeers: "7", recoveryStage: "Recovery", status: "Active", joined: "Jan 13, 2025", lastActive: "1 day ago" },
+                          { connection: "TED-2025-009", procedure: "Ankle Surgery", match: "90%", verified: true, matchedPeers: "5", recoveryStage: "Post-Op", status: "Active", joined: "Jan 12, 2025", lastActive: "2 days ago" },
+                          { connection: "TED-2025-010", procedure: "Back Surgery", match: "87%", verified: true, matchedPeers: "9", recoveryStage: "Recovery", status: "Active", joined: "Jan 11, 2025", lastActive: "Today" },
+                          { connection: "TED-2025-011", procedure: "Wrist Surgery", match: "92%", verified: true, matchedPeers: "4", recoveryStage: "Pre-Op", status: "Pending", joined: "Jan 10, 2025", lastActive: "6 days ago" },
+                          { connection: "TED-2025-012", procedure: "Elbow Surgery", match: "89%", verified: true, matchedPeers: "6", recoveryStage: "Post-Op", status: "Active", joined: "Jan 9, 2025", lastActive: "1 day ago" },
+                          { connection: "TED-2025-013", procedure: "Foot Surgery", match: "91%", verified: true, matchedPeers: "8", recoveryStage: "Recovery", status: "Connected", joined: "Jan 8, 2025", lastActive: "Today" },
+                          { connection: "TED-2025-014", procedure: "Hand Surgery", match: "93%", verified: true, matchedPeers: "3", recoveryStage: "Follow-Up", status: "Active", joined: "Jan 7, 2025", lastActive: "3 days ago" },
+                          { connection: "TED-2025-015", procedure: "Neck Surgery", match: "86%", verified: false, matchedPeers: "2", recoveryStage: "Acute", status: "Available", joined: "Jan 6, 2025", lastActive: "7 days ago" },
+                          { connection: "TED-2025-016", procedure: "ACL Reconstruction", match: "97%", verified: true, matchedPeers: "15", recoveryStage: "Recovery", status: "Active", joined: "Jan 5, 2025", lastActive: "Today" },
+                          { connection: "TED-2025-017", procedure: "Rotator Cuff Repair", match: "88%", verified: true, matchedPeers: "7", recoveryStage: "Post-Op", status: "Active", joined: "Jan 4, 2025", lastActive: "2 days ago" },
+                          { connection: "TED-2025-018", procedure: "Meniscus Repair", match: "94%", verified: true, matchedPeers: "10", recoveryStage: "Recovery", status: "Connected", joined: "Jan 3, 2025", lastActive: "1 day ago" },
+                          { connection: "TED-2025-019", procedure: "Shoulder Replacement", match: "92%", verified: true, matchedPeers: "6", recoveryStage: "Post-Op", status: "Active", joined: "Jan 2, 2025", lastActive: "Today" },
+                          { connection: "TED-2025-020", procedure: "Ankle Replacement", match: "90%", verified: true, matchedPeers: "5", recoveryStage: "Pre-Op", status: "Pending", joined: "Jan 1, 2025", lastActive: "4 days ago" },
                         ].map((row, idx) => (
                           <tr key={idx} className="hover:bg-gray-50 transition-colors">
                             <td className="px-3 py-2.5 text-blue-600 font-medium cursor-pointer hover:underline text-xs">{row.connection}</td>
-                            <td className="px-3 py-2.5 text-gray-900 text-xs">{row.description}</td>
+                            <td className="px-3 py-2.5 text-gray-900 text-xs">{row.procedure}</td>
                             <td className="px-3 py-2.5 text-gray-700 font-medium text-xs">{row.match}</td>
                             <td className="px-3 py-2.5 text-center">
-                              {row.hasPeers ? (
+                              {row.verified ? (
                                 <CheckCircle className="h-4 w-4 text-green-600 mx-auto" />
                               ) : (
-                                <X className="h-4 w-4 text-red-500 mx-auto" />
+                                <X className="h-4 w-4 text-gray-400 mx-auto" />
                               )}
                             </td>
-                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.peers}</td>
-                            <td className="px-3 py-2.5 text-gray-700 text-xs">{row.qty}</td>
-                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.type}</td>
+                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.matchedPeers}</td>
+                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.recoveryStage}</td>
                             <td className="px-3 py-2.5">
                               <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${
-                                row.status === "Available" ? "bg-green-100 text-green-700" :
-                                row.status === "Connected" ? "bg-blue-100 text-blue-700" :
+                                row.status === "Active" || row.status === "Connected" ? "bg-green-100 text-green-700" :
+                                row.status === "Available" ? "bg-blue-100 text-blue-700" :
                                 "bg-yellow-100 text-yellow-700"
                               }`}>
                                 {row.status}
                               </span>
                             </td>
-                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.created}</td>
-                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.expires}</td>
+                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.joined}</td>
+                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.lastActive}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -404,9 +415,9 @@ export default function PatientPage() {
                         />
                         {/* Blips */}
                         {[
-                          { left: "calc(50% + 27.31px)", top: "calc(50% - 4.76px)", delay: "0.89s", label: "PEER NETWORK" },
-                          { left: "calc(50% + 59.18px)", top: "calc(50% + 56.28px)", delay: "1.48s", label: "SUPPORT GROUPS" },
-                          { left: "calc(50% + 8.91px)", top: "calc(50% + 78.58px)", delay: "1.93s", label: "HEALTH PARTNERS" },
+                          { left: "calc(50% + 27.31px)", top: "calc(50% - 4.76px)", delay: "0.89s", label: "PRE-OP" },
+                          { left: "calc(50% + 59.18px)", top: "calc(50% + 56.28px)", delay: "1.48s", label: "POST-OP" },
+                          { left: "calc(50% + 8.91px)", top: "calc(50% + 78.58px)", delay: "1.93s", label: "RECOVERY" },
                         ].map((blip, idx) => (
                           <div 
                             key={idx}
@@ -502,14 +513,14 @@ export default function PatientPage() {
                         ))}
                         {/* Duplicate for seamless loop */}
                         {[
-                          { match: "100%", name: "PEER CONNECTION", id: "TED-2025-001" },
-                          { match: "98%", name: "SUPPORT GROUP", id: "TED-2025-002" },
-                          { match: "96%", name: "RECOVERY BUDDY", id: "TED-2025-003" },
-                          { match: "94%", name: "HEALTH PARTNER", id: "TED-2025-004" },
-                          { match: "93%", name: "PEER MENTOR", id: "TED-2025-005" },
-                          { match: "91%", name: "SUPPORT NETWORK", id: "TED-2025-006" },
-                          { match: "90%", name: "RECOVERY FRIEND", id: "TED-2025-007" },
-                          { match: "88%", name: "HEALTH COMPANION", id: "TED-2025-008" },
+                          { match: "96%", name: "Knee Surgery", id: "TED-2025-001" },
+                          { match: "94%", name: "Hip Replacement", id: "TED-2025-002" },
+                          { match: "92%", name: "Cardiac Recovery", id: "TED-2025-003" },
+                          { match: "91%", name: "Shoulder Surgery", id: "TED-2025-004" },
+                          { match: "89%", name: "Spinal Surgery", id: "TED-2025-005" },
+                          { match: "88%", name: "Joint Replacement", id: "TED-2025-006" },
+                          { match: "87%", name: "Post-Op Recovery", id: "TED-2025-007" },
+                          { match: "86%", name: "Pre-Op Support", id: "TED-2025-008" },
                         ].map((item, idx) => (
                           <div 
                             key={`dup-${idx}`}
@@ -699,26 +710,26 @@ export default function PatientPage() {
                     <div className="w-full h-full flex flex-col items-center justify-center relative" style={{ minHeight: "400px" }}>
                       {/* Source labels at top - Marquee animation */}
                       <div className="relative w-full mb-6 overflow-hidden" style={{ height: "32px" }}>
-                        <div 
+                            <div 
                           className="flex items-center gap-8 animate-marquee"
-                          style={{
+                              style={{ 
                             fontFamily: "Inter, sans-serif",
                             whiteSpace: "nowrap",
                             width: "fit-content"
-                          }}
-                        >
-                          {/* First set of labels */}
-                          {["PEER", "SUPPORT", "HEALTH", "RECOVERY"].map((source, idx) => (
-                            <span 
-                              key={`first-${idx}`}
-                              className="text-[11px] font-semibold text-gray-700 uppercase tracking-wider inline-block"
-                              style={{
-                                letterSpacing: "0.05em",
-                                fontWeight: 600
                               }}
                             >
-                              {source}
-                            </span>
+                          {/* First set of labels */}
+                          {["PEER", "SUPPORT", "HEALTH", "RECOVERY"].map((source, idx) => (
+                              <span 
+                              key={`first-${idx}`}
+                              className="text-[11px] font-semibold text-gray-700 uppercase tracking-wider inline-block"
+                                style={{
+                                  letterSpacing: "0.05em",
+                                  fontWeight: 600
+                                }}
+                              >
+                                {source}
+                              </span>
                           ))}
                           {/* Duplicate set for seamless loop */}
                           {["PEER", "SUPPORT", "HEALTH", "RECOVERY"].map((source, idx) => (
@@ -733,7 +744,7 @@ export default function PatientPage() {
                               {source}
                             </span>
                           ))}
-                        </div>
+                            </div>
                       </div>
                       
                       {/* Animated curved connecting lines with pulse effects */}
@@ -748,7 +759,7 @@ export default function PatientPage() {
                           { startX: "55%", startY: "0%", endX: "55%", endY: "100%", controlX: "55%", controlY: "50%" },
                           { startX: "75%", startY: "0%", endX: "70%", endY: "100%", controlX: "72.5%", controlY: "50%" },
                         ]}
-                      />
+                              />
                       
                       {/* Window box with table */}
                       <div className="table-container animate-on-scroll scale mt-20" style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: "600px" }}>
@@ -765,7 +776,7 @@ export default function PatientPage() {
                           
                           <div className="p-4">
                             <div className="flex items-center gap-2 mb-4 pb-3 border-b border-gray-200">
-                              {["PEER NETWORK", "SUPPORT GROUPS", "HEALTH PARTNERS", "RECOVERY BUDDIES"].map((label, idx) => (
+                              {["PRE-OP SUPPORT", "POST-OP RECOVERY", "CHRONIC CARE", "ACUTE RECOVERY"].map((label, idx) => (
                                 <div 
                                   key={idx}
                                   className={`px-3 py-1.5 rounded-lg text-[10px] font-semibold transition-all duration-200 animate-on-scroll fade-up ${
@@ -794,13 +805,13 @@ export default function PatientPage() {
                                 </thead>
                                 <tbody>
                                   {[
-                                    { connection: "TED-2025-001", peer: "John D.", status: "Available", source: "PEER NETWORK" },
-                                    { connection: "TED-2025-002", peer: "Sarah M.", status: "Available", source: "SUPPORT GROUPS" },
-                                    { connection: "TED-2025-003", peer: "Mike R.", status: "Pending", source: "HEALTH PARTNERS" },
-                                    { connection: "TED-2025-004", peer: "Emily T.", status: "Available", source: "RECOVERY BUDDIES" },
-                                    { connection: "TED-2025-005", peer: "David L.", status: "Connected", source: "PEER NETWORK" },
-                                    { connection: "TED-2025-006", peer: "Lisa K.", status: "Available", source: "SUPPORT GROUPS" },
-                                    { connection: "TED-2025-007", peer: "Robert P.", status: "Pending", source: "HEALTH PARTNERS" },
+                                    { connection: "TED-2025-001", peer: "John D.", status: "Available", source: "PRE-OP SUPPORT" },
+                                    { connection: "TED-2025-002", peer: "Sarah M.", status: "Available", source: "POST-OP RECOVERY" },
+                                    { connection: "TED-2025-003", peer: "Mike R.", status: "Pending", source: "CHRONIC CARE" },
+                                    { connection: "TED-2025-004", peer: "Emily T.", status: "Available", source: "ACUTE RECOVERY" },
+                                    { connection: "TED-2025-005", peer: "David L.", status: "Connected", source: "PRE-OP SUPPORT" },
+                                    { connection: "TED-2025-006", peer: "Lisa K.", status: "Available", source: "POST-OP RECOVERY" },
+                                    { connection: "TED-2025-007", peer: "Robert P.", status: "Pending", source: "CHRONIC CARE" },
                                   ].map((row, idx) => (
                                     <tr 
                                       key={idx}
@@ -904,41 +915,41 @@ export default function PatientPage() {
                             <Target className="w-4 h-4 text-green-600 transition-transform duration-300 group-hover:scale-110" />
                             <span className="text-xs font-medium text-gray-600">Match Score</span>
                           </div>
-                          <p className="text-xl font-bold text-green-700 transition-all duration-300">98%</p>
+                          <p className="text-xl font-bold text-green-700 transition-all duration-300">94%</p>
                         </div>
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 animate-on-scroll fade-up animate-data-box" style={{ animationDelay: "0.15s" }}>
                           <div className="flex items-center gap-2 mb-2">
                             <Users className="w-4 h-4 text-blue-600 transition-transform duration-300 group-hover:scale-110" />
-                            <span className="text-xs font-medium text-gray-600">Peers</span>
+                            <span className="text-xs font-medium text-gray-600">Matched Peers</span>
                           </div>
-                          <p className="text-xl font-bold text-blue-700 transition-all duration-300">29</p>
+                          <p className="text-xl font-bold text-blue-700 transition-all duration-300">12</p>
                         </div>
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 animate-on-scroll fade-up animate-data-box" style={{ animationDelay: "0.2s" }}>
                           <div className="flex items-center gap-2 mb-2">
                             <Clock className="w-4 h-4 text-blue-600 transition-transform duration-300 group-hover:scale-110" />
-                            <span className="text-xs font-medium text-gray-600">Days</span>
+                            <span className="text-xs font-medium text-gray-600">Days Active</span>
                           </div>
-                          <p className="text-xl font-bold text-blue-700 transition-all duration-300">45</p>
+                          <p className="text-xl font-bold text-blue-700 transition-all duration-300">28</p>
                         </div>
                       </div>
                       
                       {/* Right side info */}
                       <div className="grid grid-cols-2 gap-4 text-sm animate-on-scroll fade-up" style={{ animationDelay: "0.25s" }}>
                         <div className="transition-all duration-300 hover:bg-gray-50 rounded p-2 -m-2">
-                          <p className="text-gray-600 mb-1">Expires:</p>
-                          <p className="font-semibold text-gray-900 transition-colors duration-300">7/3/25 (-24d)</p>
+                          <p className="text-gray-600 mb-1">Joined:</p>
+                          <p className="font-semibold text-gray-900 transition-colors duration-300">Jan 15, 2025</p>
                         </div>
                         <div className="transition-all duration-300 hover:bg-gray-50 rounded p-2 -m-2">
-                          <p className="text-gray-600 mb-1">Issued:</p>
-                          <p className="font-semibold text-gray-900 transition-colors duration-300">6/20/25</p>
+                          <p className="text-gray-600 mb-1">Procedure:</p>
+                          <p className="font-semibold text-gray-900 transition-colors duration-300">Knee Surgery</p>
                         </div>
                         <div className="transition-all duration-300 hover:bg-gray-50 rounded p-2 -m-2">
                           <p className="text-gray-600 mb-1">Status:</p>
-                          <p className="font-semibold text-green-700 transition-colors duration-300">Open</p>
+                          <p className="font-semibold text-green-700 transition-colors duration-300">Active</p>
                         </div>
                         <div className="transition-all duration-300 hover:bg-gray-50 rounded p-2 -m-2">
-                          <p className="text-gray-600 mb-1">Type:</p>
-                          <p className="font-semibold text-gray-900 transition-colors duration-300">Peer Support</p>
+                          <p className="text-gray-600 mb-1">Recovery Stage:</p>
+                          <p className="font-semibold text-gray-900 transition-colors duration-300">Post-Op</p>
                         </div>
                       </div>
                       
@@ -975,15 +986,15 @@ export default function PatientPage() {
                           <div className="space-y-2">
                             <div className="p-2 bg-gray-50 rounded border border-gray-200 transition-all duration-300 hover:bg-gray-100 hover:border-green-300">
                               <p className="text-xs text-gray-600 mb-1">Active Connections:</p>
-                              <p className="text-sm font-semibold text-green-700 transition-all duration-300">156</p>
+                              <p className="text-sm font-semibold text-green-700 transition-all duration-300">8</p>
                             </div>
                             <div className="p-2 bg-gray-50 rounded border border-gray-200 transition-all duration-300 hover:bg-gray-100 hover:border-blue-300">
-                              <p className="text-xs text-gray-600 mb-1">Confirmed:</p>
-                              <p className="text-sm font-semibold text-blue-700 transition-all duration-300">78</p>
+                              <p className="text-xs text-gray-600 mb-1">Messages Sent:</p>
+                              <p className="text-sm font-semibold text-blue-700 transition-all duration-300">24</p>
                             </div>
                             <div className="p-2 bg-gray-50 rounded border border-gray-200 transition-all duration-300 hover:bg-gray-100 hover:border-yellow-300">
-                              <p className="text-xs text-gray-600 mb-1">Pending:</p>
-                              <p className="text-sm font-semibold text-yellow-700 transition-all duration-300">78</p>
+                              <p className="text-xs text-gray-600 mb-1">Calls Scheduled:</p>
+                              <p className="text-sm font-semibold text-yellow-700 transition-all duration-300">5</p>
                             </div>
                           </div>
                         </div>
@@ -1069,11 +1080,11 @@ export default function PatientPage() {
                   Track all connections and performance metrics
                 </h2>
                 <p className="text-sm sm:text-base text-gray-600 leading-relaxed max-w-lg mb-4">
-                  Monitor connections you're waiting on, have confirmed, or declined. Get alerted when similar opportunities reappear in the future.
+                  Monitor connections you're pending, have confirmed, or declined. Get alerted when similar opportunities reappear in the future.
                 </p>
                 <div className="space-y-4 mt-6">
                   {[
-                    { icon: Target, text: "Track connections across all stages: waiting, confirmed, and declined" },
+                    { icon: Target, text: "Track connections across all stages: pending, confirmed, and declined" },
                     { icon: Database, text: "Flag declined connections when similar opportunities reappear" },
                     { icon: Activity, text: "Analyze connection rates and performance metrics over time" },
                   ].map((item, idx) => (
@@ -1093,13 +1104,13 @@ export default function PatientPage() {
                   <div className="mt-26 w-full">
                     <div className="bg-white border-2 rounded-lg p-6 animate-on-scroll scale">
                       <div className="flex items-center justify-between mb-6 animate-on-scroll fade-up">
-                        <h3 className="text-lg font-semibold text-gray-900">Contracts</h3>
+                        <h3 className="text-lg font-semibold text-gray-900">Peer Connections</h3>
                         <div className="flex gap-2">
-                          {["confirmed", "waiting", "declined"].map((label, idx) => (
+                          {["Confirmed", "Pending", "Declined"].map((label, idx) => (
                             <span key={idx} className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-medium animate-on-scroll fade-up" style={{ 
                               animationDelay: `${idx * 0.05}s`,
-                              backgroundColor: label === "confirmed" ? "rgb(220 252 231)" : "rgb(243 244 246)",
-                              color: label === "confirmed" ? "rgb(22 101 52)" : "rgb(75 85 99)"
+                              backgroundColor: label === "Confirmed" ? "rgb(220 252 231)" : label === "Pending" ? "rgb(254 249 195)" : "rgb(243 244 246)",
+                              color: label === "Confirmed" ? "rgb(22 101 52)" : label === "Pending" ? "rgb(113 63 18)" : "rgb(75 85 99)"
                             }}>
                               {label}
                             </span>
@@ -1123,7 +1134,8 @@ export default function PatientPage() {
                                 <p className="font-medium text-sm text-gray-900">{item.type}</p>
                                 <span className={`px-2 py-1 rounded-full text-xs font-medium ${
                                   item.status === "Confirmed" ? "bg-green-100 text-green-700" :
-                                  "bg-yellow-100 text-yellow-700"
+                                  item.status === "Pending" ? "bg-yellow-100 text-yellow-700" :
+                                  "bg-gray-100 text-gray-700"
                                 }`}>
                                   {item.status}
                                 </span>

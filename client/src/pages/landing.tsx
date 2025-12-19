@@ -145,10 +145,10 @@ export default function Landing() {
         <div className="mx-auto max-w-7xl px-4 sm:px-6 relative z-[2] flex-1 flex items-center pt-20 sm:pt-0">
           <div className="text-center w-full">
             <div className="mx-auto max-w-[980px] px-4 sm:px-6 text-center">
-              {/* Made in America Badge */}
+              {/* Powered by CareBridge AI Badge */}
               <div className="bg-white/10 backdrop-blur-sm border border-white/20 group mx-auto flex w-fit items-center gap-2 rounded-full p-1 pl-3 pr-3 sm:pl-4 sm:pr-4 text-white mb-4 sm:mb-6">
-                <span className="text-xs sm:text-sm font-medium">Made in America</span>
-                <span className="text-lg sm:text-xl">🇺🇸</span>
+                <Activity className="h-4 w-4 sm:h-5 sm:w-5 text-blue-400" />
+                <span className="text-xs sm:text-sm font-medium">Powered by CareBridge AI</span>
               </div>
               
               {/* Tagline */}

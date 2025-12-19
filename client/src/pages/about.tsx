@@ -139,7 +139,7 @@ export default function About() {
             </h2>
             
             <div className="flex items-center gap-3 mb-8">
-              <span className="text-4xl">🇺🇸</span>
+              <Shield className="h-8 w-8 text-green-600" />
             </div>
             
             <div className="space-y-6 text-lg text-gray-700 leading-relaxed">
@@ -197,56 +197,44 @@ export default function About() {
         </div>
       </section>
 
-      {/* Footer - Matching SalesPatriot style */}
-      <footer className="py-12 border-t border-gray-200 bg-white">
-        <div className="max-w-7xl mx-auto px-6">
-          <div className="mb-8">
-            <Logo size="md" />
-            <p className="text-sm text-gray-600 mt-4 max-w-2xl">
-              TeddyBridge connects patients for peer-to-peer support and enables doctors to monitor outcomes with PROMS analytics—tracking recovery journeys and improving healthcare outcomes.
-            </p>
-          </div>
-          
-          <div className="grid md:grid-cols-2 gap-8 mb-8">
-            <div>
-              <h3 className="font-semibold text-gray-900 mb-4">Company</h3>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li>
-                  <Link href="/about" className="hover:text-gray-900 transition-colors">
-                    About
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/contact" className="hover:text-gray-900 transition-colors">
-                    Contact
-                  </Link>
-                </li>
-              </ul>
+      {/* Footer */}
+      <footer className="relative z-10 pt-16 pb-8 border-t border-gray-200 bg-white">
+        <div className="max-w-screen-xl mx-auto px-6 lg:px-12">
+          <div className="flex flex-col lg:flex-row lg:justify-between items-start lg:items-center gap-8">
+            {/* Left side */}
+            <div className="flex flex-col">
+              <div className="mb-4">
+                <Logo size="lg" />
+              </div>
+              <p className="text-sm text-gray-600 mb-1">
+                Brought to you by CareBridge AI.
+              </p>
+              <p className="text-xs text-gray-500 mt-2">
+                © 2025 TeddyBridge. All rights reserved.
+              </p>
             </div>
-            <div>
-              <h3 className="font-semibold text-gray-900 mb-4">Legal</h3>
-              <ul className="space-y-2 text-sm text-gray-600">
-                <li>
-                  <Link href="/privacy" className="hover:text-gray-900 transition-colors">
-                    Privacy Policy
-                  </Link>
-                </li>
-                <li>
-                  <Link href="/terms" className="hover:text-gray-900 transition-colors">
-                    Terms of Service
-                  </Link>
-                </li>
-              </ul>
-            </div>
-          </div>
-          
-          <div className="pt-8 border-t border-gray-200 flex flex-col md:flex-row items-center justify-between gap-4">
-            <p className="text-sm text-gray-600">
-              © 2025 TeddyBridge. All rights reserved.
-            </p>
-            <div className="flex items-center gap-2 text-sm text-gray-600">
-              <Shield className="h-4 w-4 text-green-600" />
-              <span>HIPAA Compliant</span>
+            
+            {/* Right side - Navigation and Sign Up */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 sm:gap-6">
+              <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+                <Link href="/how-it-works" className="text-sm text-gray-600 hover:text-gray-900">
+                  How it works
+                </Link>
+                <Link href="/terms" className="text-sm text-gray-600 hover:text-gray-900">
+                  Terms
+                </Link>
+                <Link href="/contact" className="text-sm text-gray-600 hover:text-gray-900">
+                  Contact
+                </Link>
+                <Link href="/login" className="text-sm text-gray-600 hover:text-gray-900">
+                  Login
+                </Link>
+              </div>
+              <Link href="/">
+                <Button className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-lg px-6 py-2 text-sm font-medium">
+                  Sign Up
+                </Button>
+              </Link>
             </div>
           </div>
         </div>

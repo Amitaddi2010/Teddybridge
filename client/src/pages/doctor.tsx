@@ -267,42 +267,52 @@ export default function DoctorPage() {
                       <thead className="bg-gray-50 border-b border-gray-200">
                         <tr>
                           <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">PROM ID</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Description</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Value</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Has Patients</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Patients</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Qty</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Type</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Survey Type</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Response Rate</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Verified</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Linked Patients</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Responses</th>
                           <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Status</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Issued On</th>
-                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Expires</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Created</th>
+                          <th className="px-3 py-2.5 text-left font-semibold text-gray-700 text-xs uppercase tracking-wide whitespace-nowrap">Due Date</th>
                         </tr>
                       </thead>
                       <tbody className="bg-white divide-y divide-gray-100">
                         {[
-                          { id: "PROM-2025-001", description: "PRE-OP ASSESSMENT, SURGICAL", value: "$3,600.00*", hasPatients: true, patients: "81413", qty: "6", type: "EA", status: "Active", issued: "6/20/25", expires: "7/20/25" },
-                          { id: "PROM-2025-002", description: "POST-OP SURVEY, RECOVERY", value: "$75,400.00*", hasPatients: true, patients: "56878", qty: "754", type: "EA", status: "Active", issued: "6/19/25", expires: "7/19/25" },
-                          { id: "PROM-2025-003", description: "FOLLOW-UP CHECK, CHRONIC", value: "$11,968.00*", hasPatients: true, patients: "4QBJ8", qty: "4", type: "EA", status: "Pending", issued: "6/18/25", expires: "7/18/25" },
-                          { id: "PROM-2025-004", description: "PRE-OP EVAL, ACUTE", value: "$744.00*", hasPatients: true, patients: "2U435, 8PGY8, 6PZL1 + 1 more", qty: "3", type: "EA", status: "Completed", issued: "6/17/25", expires: "7/17/25" },
-                          { id: "PROM-2025-005", description: "POST-OP MONITOR, SURGICAL", value: "$16,111.24*", hasPatients: true, patients: "3K9M2", qty: "1,102", type: "EA", status: "Active", issued: "6/16/25", expires: "7/16/25" },
-                          { id: "PROM-2025-006", description: "FOLLOW-UP SURVEY, CHRONIC", value: "$13,417.50*", hasPatients: false, patients: "-", qty: "6", type: "EA", status: "Pending", issued: "6/15/25", expires: "7/15/25" },
-                          { id: "PROM-2025-007", description: "POST-OP ASSESSMENT, RECOVERY", value: "$17,906.50*", hasPatients: true, patients: "7X4M2", qty: "59", type: "EA", status: "Completed", issued: "6/14/25", expires: "7/14/25" },
-                          { id: "PROM-2025-008", description: "PRE-OP SURVEY, SURGICAL", value: "$5,200.00*", hasPatients: true, patients: "9N5P1", qty: "12", type: "EA", status: "Active", issued: "6/13/25", expires: "7/13/25" },
+                          { id: "PROM-2025-001", surveyType: "Pre-Op Assessment", responseRate: "87%", verified: true, linkedPatients: "24", responses: "21", status: "Active", created: "Jan 20, 2025", dueDate: "Feb 20, 2025" },
+                          { id: "PROM-2025-002", surveyType: "Post-Op Survey", responseRate: "92%", verified: true, linkedPatients: "18", responses: "17", status: "Active", created: "Jan 19, 2025", dueDate: "Feb 19, 2025" },
+                          { id: "PROM-2025-003", surveyType: "Follow-Up Check", responseRate: "75%", verified: true, linkedPatients: "12", responses: "9", status: "Pending", created: "Jan 18, 2025", dueDate: "Feb 18, 2025" },
+                          { id: "PROM-2025-004", surveyType: "Pre-Op Evaluation", responseRate: "100%", verified: true, linkedPatients: "8", responses: "8", status: "Completed", created: "Jan 17, 2025", dueDate: "Feb 17, 2025" },
+                          { id: "PROM-2025-005", surveyType: "Post-Op Monitoring", responseRate: "83%", verified: true, linkedPatients: "30", responses: "25", status: "Active", created: "Jan 16, 2025", dueDate: "Feb 16, 2025" },
+                          { id: "PROM-2025-006", surveyType: "Follow-Up Survey", responseRate: "67%", verified: false, linkedPatients: "15", responses: "10", status: "Pending", created: "Jan 15, 2025", dueDate: "Feb 15, 2025" },
+                          { id: "PROM-2025-007", surveyType: "Post-Op Assessment", responseRate: "95%", verified: true, linkedPatients: "20", responses: "19", status: "Completed", created: "Jan 14, 2025", dueDate: "Feb 14, 2025" },
+                          { id: "PROM-2025-008", surveyType: "Pre-Op Survey", responseRate: "79%", verified: true, linkedPatients: "14", responses: "11", status: "Active", created: "Jan 13, 2025", dueDate: "Feb 13, 2025" },
+                          { id: "PROM-2025-009", surveyType: "Pain Assessment", responseRate: "88%", verified: true, linkedPatients: "22", responses: "19", status: "Active", created: "Jan 12, 2025", dueDate: "Feb 12, 2025" },
+                          { id: "PROM-2025-010", surveyType: "Mobility Survey", responseRate: "91%", verified: true, linkedPatients: "16", responses: "15", status: "Active", created: "Jan 11, 2025", dueDate: "Feb 11, 2025" },
+                          { id: "PROM-2025-011", surveyType: "Quality of Life", responseRate: "73%", verified: true, linkedPatients: "19", responses: "14", status: "Pending", created: "Jan 10, 2025", dueDate: "Feb 10, 2025" },
+                          { id: "PROM-2025-012", surveyType: "Functional Assessment", responseRate: "85%", verified: true, linkedPatients: "26", responses: "22", status: "Active", created: "Jan 9, 2025", dueDate: "Feb 9, 2025" },
+                          { id: "PROM-2025-013", surveyType: "Satisfaction Survey", responseRate: "94%", verified: true, linkedPatients: "17", responses: "16", status: "Completed", created: "Jan 8, 2025", dueDate: "Feb 8, 2025" },
+                          { id: "PROM-2025-014", surveyType: "Recovery Progress", responseRate: "81%", verified: true, linkedPatients: "28", responses: "23", status: "Active", created: "Jan 7, 2025", dueDate: "Feb 7, 2025" },
+                          { id: "PROM-2025-015", surveyType: "Symptom Tracking", responseRate: "69%", verified: false, linkedPatients: "13", responses: "9", status: "Pending", created: "Jan 6, 2025", dueDate: "Feb 6, 2025" },
+                          { id: "PROM-2025-016", surveyType: "Medication Review", responseRate: "96%", verified: true, linkedPatients: "25", responses: "24", status: "Active", created: "Jan 5, 2025", dueDate: "Feb 5, 2025" },
+                          { id: "PROM-2025-017", surveyType: "Complication Check", responseRate: "77%", verified: true, linkedPatients: "21", responses: "16", status: "Active", created: "Jan 4, 2025", dueDate: "Feb 4, 2025" },
+                          { id: "PROM-2025-018", surveyType: "Activity Level", responseRate: "89%", verified: true, linkedPatients: "23", responses: "20", status: "Completed", created: "Jan 3, 2025", dueDate: "Feb 3, 2025" },
+                          { id: "PROM-2025-019", surveyType: "Wellness Check", responseRate: "82%", verified: true, linkedPatients: "27", responses: "22", status: "Active", created: "Jan 2, 2025", dueDate: "Feb 2, 2025" },
+                          { id: "PROM-2025-020", surveyType: "Outcome Measure", responseRate: "90%", verified: true, linkedPatients: "29", responses: "26", status: "Active", created: "Jan 1, 2025", dueDate: "Feb 1, 2025" },
                         ].map((row, idx) => (
                           <tr key={idx} className="hover:bg-gray-50 transition-colors">
                             <td className="px-3 py-2.5 text-blue-600 font-medium cursor-pointer hover:underline text-xs">{row.id}</td>
-                            <td className="px-3 py-2.5 text-gray-900 text-xs">{row.description}</td>
-                            <td className="px-3 py-2.5 text-gray-700 font-medium text-xs">{row.value}</td>
+                            <td className="px-3 py-2.5 text-gray-900 text-xs">{row.surveyType}</td>
+                            <td className="px-3 py-2.5 text-gray-700 font-medium text-xs">{row.responseRate}</td>
                             <td className="px-3 py-2.5 text-center">
-                              {row.hasPatients ? (
+                              {row.verified ? (
                                 <CheckCircle className="h-4 w-4 text-green-600 mx-auto" />
                               ) : (
-                                <X className="h-4 w-4 text-red-500 mx-auto" />
+                                <X className="h-4 w-4 text-gray-400 mx-auto" />
                               )}
                             </td>
-                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.patients}</td>
-                            <td className="px-3 py-2.5 text-gray-700 text-xs">{row.qty}</td>
-                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.type}</td>
+                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.linkedPatients}</td>
+                            <td className="px-3 py-2.5 text-gray-700 text-xs">{row.responses}</td>
                             <td className="px-3 py-2.5">
                               <span className={`px-2 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${
                                 row.status === "Active" ? "bg-green-100 text-green-700" :
@@ -312,8 +322,8 @@ export default function DoctorPage() {
                                 {row.status}
                               </span>
                             </td>
-                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.issued}</td>
-                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.expires}</td>
+                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.created}</td>
+                            <td className="px-3 py-2.5 text-gray-600 text-xs">{row.dueDate}</td>
                           </tr>
                         ))}
                       </tbody>
@@ -481,14 +491,14 @@ export default function DoctorPage() {
                         animation: "marqueeVertical 25s linear infinite"
                       }}>
                         {[
-                          { match: "100%", name: "PROM SURVEY", id: "PROM-2025-001" },
-                          { match: "98%", name: "PATIENT ASSESSMENT", id: "PROM-2025-002" },
-                          { match: "96%", name: "RECOVERY TRACKING", id: "PROM-2025-003" },
-                          { match: "94%", name: "HEALTH METRICS", id: "PROM-2025-004" },
-                          { match: "93%", name: "OUTCOME MEASURE", id: "PROM-2025-005" },
-                          { match: "91%", name: "PATIENT REPORT", id: "PROM-2025-006" },
-                          { match: "90%", name: "SURVEY DATA", id: "PROM-2025-007" },
-                          { match: "88%", name: "ASSESSMENT FORM", id: "PROM-2025-008" },
+                          { match: "87%", name: "Pre-Op Assessment", id: "PROM-2025-001" },
+                          { match: "92%", name: "Post-Op Survey", id: "PROM-2025-002" },
+                          { match: "75%", name: "Follow-Up Check", id: "PROM-2025-003" },
+                          { match: "100%", name: "Pre-Op Evaluation", id: "PROM-2025-004" },
+                          { match: "83%", name: "Post-Op Monitoring", id: "PROM-2025-005" },
+                          { match: "67%", name: "Follow-Up Survey", id: "PROM-2025-006" },
+                          { match: "95%", name: "Post-Op Assessment", id: "PROM-2025-007" },
+                          { match: "79%", name: "Pre-Op Survey", id: "PROM-2025-008" },
                         ].map((item, idx) => (
                           <div 
                             key={idx}
@@ -509,14 +519,14 @@ export default function DoctorPage() {
                         ))}
                         {/* Duplicate for seamless loop */}
                         {[
-                          { match: "100%", name: "PROM SURVEY", id: "PROM-2025-001" },
-                          { match: "98%", name: "PATIENT ASSESSMENT", id: "PROM-2025-002" },
-                          { match: "96%", name: "RECOVERY TRACKING", id: "PROM-2025-003" },
-                          { match: "94%", name: "HEALTH METRICS", id: "PROM-2025-004" },
-                          { match: "93%", name: "OUTCOME MEASURE", id: "PROM-2025-005" },
-                          { match: "91%", name: "PATIENT REPORT", id: "PROM-2025-006" },
-                          { match: "90%", name: "SURVEY DATA", id: "PROM-2025-007" },
-                          { match: "88%", name: "ASSESSMENT FORM", id: "PROM-2025-008" },
+                          { match: "87%", name: "Pre-Op Assessment", id: "PROM-2025-001" },
+                          { match: "92%", name: "Post-Op Survey", id: "PROM-2025-002" },
+                          { match: "75%", name: "Follow-Up Check", id: "PROM-2025-003" },
+                          { match: "100%", name: "Pre-Op Evaluation", id: "PROM-2025-004" },
+                          { match: "83%", name: "Post-Op Monitoring", id: "PROM-2025-005" },
+                          { match: "67%", name: "Follow-Up Survey", id: "PROM-2025-006" },
+                          { match: "95%", name: "Post-Op Assessment", id: "PROM-2025-007" },
+                          { match: "79%", name: "Pre-Op Survey", id: "PROM-2025-008" },
                         ].map((item, idx) => (
                           <div 
                             key={`dup-${idx}`}
@@ -706,26 +716,26 @@ export default function DoctorPage() {
                     <div className="w-full h-full flex flex-col items-center justify-center relative" style={{ minHeight: "400px" }}>
                       {/* Source labels at top - Marquee animation */}
                       <div className="relative w-full mb-6 overflow-hidden" style={{ height: "32px" }}>
-                        <div 
+                            <div 
                           className="flex items-center gap-8 animate-marquee"
-                          style={{
+                              style={{ 
                             fontFamily: "Inter, sans-serif",
                             whiteSpace: "nowrap",
                             width: "fit-content"
-                          }}
-                        >
-                          {/* First set of labels */}
-                          {["EMR", "PATIENTS", "SURVEYS", "PROMS"].map((source, idx) => (
-                            <span 
-                              key={`first-${idx}`}
-                              className="text-[11px] font-semibold text-gray-700 uppercase tracking-wider inline-block"
-                              style={{
-                                letterSpacing: "0.05em",
-                                fontWeight: 600
                               }}
                             >
-                              {source}
-                            </span>
+                          {/* First set of labels */}
+                          {["EMR", "PATIENTS", "SURVEYS", "PROMS"].map((source, idx) => (
+                              <span 
+                              key={`first-${idx}`}
+                              className="text-[11px] font-semibold text-gray-700 uppercase tracking-wider inline-block"
+                                style={{
+                                  letterSpacing: "0.05em",
+                                  fontWeight: 600
+                                }}
+                              >
+                                {source}
+                              </span>
                           ))}
                           {/* Duplicate set for seamless loop */}
                           {["EMR", "PATIENTS", "SURVEYS", "PROMS"].map((source, idx) => (
@@ -740,7 +750,7 @@ export default function DoctorPage() {
                               {source}
                             </span>
                           ))}
-                        </div>
+                            </div>
                       </div>
                       
                       {/* Animated curved connecting lines with pulse effects */}
@@ -755,7 +765,7 @@ export default function DoctorPage() {
                           { startX: "55%", startY: "0%", endX: "55%", endY: "100%", controlX: "55%", controlY: "50%" },
                           { startX: "75%", startY: "0%", endX: "70%", endY: "100%", controlX: "72.5%", controlY: "50%" },
                         ]}
-                      />
+                              />
                       
                       {/* Window box with table */}
                       <div className="table-container animate-on-scroll scale mt-20" style={{ position: "relative", zIndex: 1, width: "100%", maxWidth: "600px" }}>
@@ -908,40 +918,40 @@ export default function DoctorPage() {
                       <div className="grid grid-cols-3 gap-3">
                         <div className="bg-green-50 border border-green-200 rounded-lg p-4 animate-on-scroll fade-up animate-data-box" style={{ animationDelay: "0.1s" }}>
                           <div className="flex items-center gap-2 mb-2">
-                            <DollarSign className="w-4 h-4 text-green-600 transition-transform duration-300 group-hover:scale-110" />
-                            <span className="text-xs font-medium text-gray-600">Est. Value</span>
+                            <ClipboardCheck className="w-4 h-4 text-green-600 transition-transform duration-300 group-hover:scale-110" />
+                            <span className="text-xs font-medium text-gray-600">Response Rate</span>
                           </div>
-                          <p className="text-xl font-bold text-green-700 transition-all duration-300">$12,450</p>
+                          <p className="text-xl font-bold text-green-700 transition-all duration-300">87%</p>
                         </div>
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 animate-on-scroll fade-up animate-data-box" style={{ animationDelay: "0.15s" }}>
                           <div className="flex items-center gap-2 mb-2">
-                            <Package className="w-4 h-4 text-blue-600 transition-transform duration-300 group-hover:scale-110" />
-                            <span className="text-xs font-medium text-gray-600">Patients</span>
+                            <Users className="w-4 h-4 text-blue-600 transition-transform duration-300 group-hover:scale-110" />
+                            <span className="text-xs font-medium text-gray-600">Linked Patients</span>
                           </div>
-                          <p className="text-xl font-bold text-blue-700 transition-all duration-300">29</p>
+                          <p className="text-xl font-bold text-blue-700 transition-all duration-300">24</p>
                         </div>
                         <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 animate-on-scroll fade-up animate-data-box" style={{ animationDelay: "0.2s" }}>
                           <div className="flex items-center gap-2 mb-2">
                             <Clock className="w-4 h-4 text-blue-600 transition-transform duration-300 group-hover:scale-110" />
-                            <span className="text-xs font-medium text-gray-600">Days</span>
+                            <span className="text-xs font-medium text-gray-600">Days Active</span>
                           </div>
-                          <p className="text-xl font-bold text-blue-700 transition-all duration-300">45</p>
+                          <p className="text-xl font-bold text-blue-700 transition-all duration-300">42</p>
                         </div>
                       </div>
                       
                       {/* Right side info */}
                       <div className="grid grid-cols-2 gap-4 text-sm animate-on-scroll fade-up" style={{ animationDelay: "0.25s" }}>
                         <div className="transition-all duration-300 hover:bg-gray-50 rounded p-2 -m-2">
-                          <p className="text-gray-600 mb-1">Expires:</p>
-                          <p className="font-semibold text-gray-900 transition-colors duration-300">7/3/25 (-24d)</p>
+                          <p className="text-gray-600 mb-1">Created:</p>
+                          <p className="font-semibold text-gray-900 transition-colors duration-300">Jan 20, 2025</p>
                         </div>
                         <div className="transition-all duration-300 hover:bg-gray-50 rounded p-2 -m-2">
-                          <p className="text-gray-600 mb-1">Issued:</p>
-                          <p className="font-semibold text-gray-900 transition-colors duration-300">6/20/25</p>
+                          <p className="text-gray-600 mb-1">Due Date:</p>
+                          <p className="font-semibold text-gray-900 transition-colors duration-300">Feb 15, 2025</p>
                         </div>
                         <div className="transition-all duration-300 hover:bg-gray-50 rounded p-2 -m-2">
                           <p className="text-gray-600 mb-1">Status:</p>
-                          <p className="font-semibold text-green-700 transition-colors duration-300">Open</p>
+                          <p className="font-semibold text-green-700 transition-colors duration-300">Active</p>
                         </div>
                         <div className="transition-all duration-300 hover:bg-gray-50 rounded p-2 -m-2">
                           <p className="text-gray-600 mb-1">Type:</p>
@@ -981,16 +991,16 @@ export default function DoctorPage() {
                           </div>
                           <div className="space-y-2">
                             <div className="p-2 bg-gray-50 rounded border border-gray-200 transition-all duration-300 hover:bg-gray-100 hover:border-green-300">
-                              <p className="text-xs text-gray-600 mb-1">Active Patients:</p>
-                              <p className="text-sm font-semibold text-green-700 transition-all duration-300">156</p>
+                              <p className="text-xs text-gray-600 mb-1">Surveys Sent:</p>
+                              <p className="text-sm font-semibold text-green-700 transition-all duration-300">24</p>
                             </div>
                             <div className="p-2 bg-gray-50 rounded border border-gray-200 transition-all duration-300 hover:bg-gray-100 hover:border-blue-300">
                               <p className="text-xs text-gray-600 mb-1">Completed:</p>
-                              <p className="text-sm font-semibold text-blue-700 transition-all duration-300">78</p>
+                              <p className="text-sm font-semibold text-blue-700 transition-all duration-300">21</p>
                             </div>
                             <div className="p-2 bg-gray-50 rounded border border-gray-200 transition-all duration-300 hover:bg-gray-100 hover:border-yellow-300">
                               <p className="text-xs text-gray-600 mb-1">Pending:</p>
-                              <p className="text-sm font-semibold text-yellow-700 transition-all duration-300">78</p>
+                              <p className="text-sm font-semibold text-yellow-700 transition-all duration-300">3</p>
                             </div>
                           </div>
                         </div>

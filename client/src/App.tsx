@@ -8,6 +8,9 @@ import { AuthProvider, useAuth } from "@/lib/auth";
 import NotFound from "@/pages/not-found";
 import Landing from "@/pages/landing";
 import About from "@/pages/about";
+import HowItWorks from "@/pages/how-it-works";
+import Terms from "@/pages/terms";
+import Contact from "@/pages/contact";
 import Login from "@/pages/auth/login";
 import SignupPatient from "@/pages/auth/signup-patient";
 import SignupDoctor from "@/pages/auth/signup-doctor";
@@ -117,6 +120,18 @@ function Router() {
       
       <Route path="/about">
         <About />
+      </Route>
+      
+      <Route path="/how-it-works">
+        <HowItWorks />
+      </Route>
+      
+      <Route path="/terms">
+        <Terms />
+      </Route>
+      
+      <Route path="/contact">
+        <Contact />
       </Route>
       
       <Route path="/dashboard/patient">
